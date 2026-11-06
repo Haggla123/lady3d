@@ -590,15 +590,15 @@ export function Cart() {
     return (
       <div className="cart-empty-screen">
         <div className="empty-cart-illu">
-          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
             <line x1="3" y1="6" x2="21" y2="6"/>
             <path d="M16 10a4 4 0 0 1-8 0"/>
           </svg>
         </div>
         <h2>Your basket is empty</h2>
-        <p>Looks like you haven’t added any delicious meals to your basket yet.</p>
-        <Link to="/menu" className="btn-primary-pill">
+        <p>Looks like you haven't added any delicious meals to your basket yet.</p>
+        <Link to="/menu" className="btn-order-cta" style={{ maxWidth: '280px', margin: '0 auto' }}>
           Browse Menu Now
         </Link>
       </div>
@@ -607,8 +607,14 @@ export function Cart() {
 
   return (
     <div className="cart-modern-screen">
+      {/* Top Header Row */}
       <div className="cart-header-row">
-        <Link to="/menu" className="cart-back-btn">← Menu</Link>
+        <Link to="/menu" className="cart-back-btn">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+          </svg>
+          Menu
+        </Link>
         <h1 className="cart-main-title">Order Basket</h1>
         <span className="cart-badge-count">{count} {count === 1 ? 'item' : 'items'}</span>
       </div>
@@ -616,73 +622,123 @@ export function Cart() {
       {/* Delivery / Pickup selector */}
       <div className="cart-mode-selector">
         <button
+          type="button"
           className={`cart-mode-btn ${orderType === 'delivery' ? 'active' : ''}`}
           onClick={() => setOrderType('delivery')}
         >
-          Campus Delivery
+          🛵 Campus Delivery
         </button>
         <button
+          type="button"
           className={`cart-mode-btn ${orderType === 'pickup' ? 'active' : ''}`}
           onClick={() => setOrderType('pickup')}
         >
-          Counter Pickup
+          🥡 Counter Pickup
         </button>
       </div>
 
-      {/* Items list */}
+      {/* Delivery Notice Pill */}
+      <div className="cart-mode-info-banner">
+        {orderType === 'delivery' ? (
+          <span>
+            🚀 Express campus delivery (15–25 mins). {subtotal >= 80 ? (
+              <b className="free-tag">🎉 FREE delivery unlocked!</b>
+            ) : (
+              <span>Add <b>{money(Math.max(0, 80 - subtotal))}</b> more for FREE delivery.</span>
+            )}
+          </span>
+        ) : (
+          <span>🏪 Ready for instant pickup at kitchen counter in 10–15 mins.</span>
+        )}
+      </div>
+
+      {/* Cart Items List */}
       <div className="cart-items-list">
         {lines.map(line => {
           const isLineAvail = ok(line.it)
           const lineId = line.lineId || line.id
           return (
             <div key={lineId} className={`cart-item-card ${isLineAvail ? '' : 'line-warn'}`}>
-              <div className="cart-item-photo">
-                <Food item={line.it} />
-              </div>
+              {/* Top Row: Photo + Food Info + Trash Button */}
+              <div className="cart-item-main-row">
+                <div className="cart-item-photo">
+                  <Food item={line.it} />
+                </div>
 
-              <div className="cart-item-info">
-                <h3 className="cart-item-name">{line.it.name}</h3>
-                {line.extrasList && line.extrasList.length > 0 && (
-                  <div className="cart-item-extras-list">
-                    {line.extrasList.map((ex, i) => (
-                      <span key={i} className="cart-extra-pill">+ {ex.name}</span>
-                    ))}
+                <div className="cart-item-content">
+                  <div className="cart-item-header">
+                    <h3 className="cart-item-title">{line.it.name}</h3>
+                    <button
+                      className="cart-item-remove-btn"
+                      onClick={() => setQty(lineId, 0)}
+                      aria-label="Remove item"
+                      title="Remove from basket"
+                    >
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                    </button>
                   </div>
-                )}
-                <span className="cart-item-unit-price">{money(line.unitPrice || price(line.it))} each</span>
-                {!isLineAvail && (
-                  <span className="cart-item-warn-tag">Notice: Unavailable at selected branch</span>
-                )}
+
+                  {line.extrasList && line.extrasList.length > 0 && (
+                    <div className="cart-item-extras">
+                      {line.extrasList.map((ex, i) => (
+                        <span key={i} className="cart-extra-chip">+ {ex.name}</span>
+                      ))}
+                    </div>
+                  )}
+
+                  <span className="cart-unit-price">{money(line.unitPrice || price(line.it))} each</span>
+
+                  {!isLineAvail && (
+                    <div className="cart-item-warn-banner">
+                      ⚠️ Unavailable at selected branch
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="cart-item-stepper">
-                <button onClick={() => setQty(lineId, line.qty - 1)} aria-label="Decrease">−</button>
-                <span>{line.qty}</span>
-                <button onClick={() => setQty(lineId, line.qty + 1)} aria-label="Increase">+</button>
-              </div>
+              {/* Bottom Row: Quantity Stepper & Line Total */}
+              <div className="cart-item-footer-row">
+                <div className="cart-stepper-control">
+                  <button onClick={() => setQty(lineId, line.qty - 1)} aria-label="Decrease quantity">−</button>
+                  <span className="stepper-count">{line.qty}</span>
+                  <button onClick={() => setQty(lineId, line.qty + 1)} aria-label="Increase quantity">+</button>
+                </div>
 
-              <div className="cart-item-price-col">
-                <strong className="cart-line-total">{money(line.lineTotal || (price(line.it) * line.qty))}</strong>
-                <button
-                  className="cart-item-trash"
-                  onClick={() => setQty(lineId, 0)}
-                  aria-label="Remove item"
-                >
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                </button>
+                <div className="cart-item-total-price">
+                  <span className="line-total-caption">Total:</span>
+                  <strong className="line-total-amount">{money(line.lineTotal || (price(line.it) * line.qty))}</strong>
+                </div>
               </div>
             </div>
           )
         })}
       </div>
 
-      {/* Promo Code Input Box (SnapEats style) */}
+      {/* Add more items shortcut */}
+      <Link to="/menu" className="btn-add-more-items">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+        </svg>
+        Add More Food or Drinks
+      </Link>
+
+      {/* Promo Code Input Box */}
       <div className="promo-voucher-box">
-        <label className="promo-label">Promocode / Voucher</label>
+        <div className="promo-box-header">
+          <span className="promo-ticket-icon">🎟️</span>
+          <div>
+            <h4 className="promo-box-title">Have a Promocode or Voucher?</h4>
+            <p className="promo-box-sub">Apply student & first-order discounts</p>
+          </div>
+        </div>
+
         <div className="promo-input-row">
           <input
             type="text"
-            placeholder="e.g. WELCOME20 or STUDENT10"
+            placeholder="Enter promo code (e.g. WELCOME20)"
             value={promoInput || promoCode}
             onChange={e => setPromoInput(e.target.value.toUpperCase())}
           />
@@ -692,17 +748,23 @@ export function Cart() {
             <button className="btn-promo-apply" onClick={() => applyPromo(promoInput)}>Apply</button>
           )}
         </div>
+
         {promoCode && (
           <p className="promo-success-msg">✓ Promocode <b>{promoCode}</b> applied successfully!</p>
         )}
         {promoError && (
           <p className="promo-error-msg">{promoError}</p>
         )}
+
         <div className="promo-suggestions-row">
           <span className="suggest-hint">Quick apply:</span>
           {Object.keys(PROMO_CODES).map(code => (
-            <button key={code} className="promo-chip-quick" onClick={() => applyPromo(code)}>
-              {code}
+            <button
+              key={code}
+              className={`promo-chip-quick ${promoCode === code ? 'active' : ''}`}
+              onClick={() => applyPromo(code)}
+            >
+              {code} {PROMO_CODES[code]?.discount ? `(-${PROMO_CODES[code].discount * 100}%)` : ''}
             </button>
           ))}
         </div>
@@ -710,6 +772,7 @@ export function Cart() {
 
       {/* Order Pricing Summary */}
       <div className="cart-totals-card">
+        <h4 className="totals-card-title">Order Summary</h4>
         <div className="totals-row">
           <span>Subtotal</span>
           <span>{money(subtotal)}</span>
@@ -717,22 +780,24 @@ export function Cart() {
         {discount > 0 && (
           <div className="totals-row discount-row">
             <span>Promocode Discount ({promoCode})</span>
-            <span>-{money(discount)}</span>
+            <span className="discount-val">-{money(discount)}</span>
           </div>
         )}
         <div className="totals-row">
-          <span>{orderType === 'delivery' ? 'Delivery Fee' : 'Pickup Service'}</span>
-          <span>{deliveryFee > 0 ? money(deliveryFee) : 'FREE'}</span>
+          <span>{orderType === 'delivery' ? 'Campus Delivery' : 'Counter Pickup'}</span>
+          <span>{deliveryFee > 0 ? money(deliveryFee) : <span className="free-val">FREE</span>}</span>
         </div>
         <hr className="totals-divider" />
         <div className="totals-row total-highlight">
-          <b>Total</b>
+          <b>Total to Pay</b>
           <b className="total-num">{money(total)}</b>
         </div>
+        <p className="totals-note">All taxes & packaging fees included.</p>
       </div>
 
+      {/* Proceed to Checkout CTA */}
       <Link to="/checkout" className="btn-order-cta">
-        Proceed to Order · {money(total)} <span>→</span>
+        Proceed to Checkout · {money(total)} <span>→</span>
       </Link>
     </div>
   )
@@ -745,7 +810,8 @@ export function Checkout() {
     name: user?.name || 'Julie Martin',
     phone: '0241234567',
     pay: 'momo',
-    address: 'Hall 3, Room 14, Catholic University Fiapre'
+    address: 'Hall 3, Room 14, Catholic University Fiapre',
+    note: ''
   })
   const [step, setStep] = useState(1)
   const [err, setErr] = useState('')
@@ -756,7 +822,10 @@ export function Checkout() {
     return (
       <div className="cart-empty-screen">
         <h2>No items to checkout</h2>
-        <Link to="/menu" className="btn-primary-pill">Browse Menu</Link>
+        <p>Your basket is currently empty. Please choose your favorite meals first.</p>
+        <Link to="/menu" className="btn-order-cta" style={{ maxWidth: '280px', margin: '0 auto' }}>
+          Browse Menu Now
+        </Link>
       </div>
     )
   }
@@ -779,7 +848,14 @@ export function Checkout() {
 
   return (
     <div className="checkout-modern-screen">
+      {/* Top Header & Breadcrumbs */}
       <div className="checkout-header-step">
+        <Link to="/cart" className="cart-back-btn">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+          </svg>
+          Basket
+        </Link>
         <h1 className="checkout-title">Checkout</h1>
         <div className="checkout-progress-steps">
           <span className={`step-dot ${step === 1 ? 'current' : 'done'}`}>1. Details</span>
@@ -791,8 +867,9 @@ export function Checkout() {
       <div className="checkout-form-card">
         {step === 1 ? (
           <>
+            {/* Step 1 Section: Branch & Delivery Option */}
             <div className="form-group-section">
-              <label className="field-group-title">Branch & Delivery Mode</label>
+              <label className="field-group-title">1. Branch & Fulfillment Mode</label>
               <BranchPicker />
 
               <div className="cart-mode-selector mt-2">
@@ -801,53 +878,65 @@ export function Checkout() {
                   className={`cart-mode-btn ${orderType === 'delivery' ? 'active' : ''}`}
                   onClick={() => setOrderType('delivery')}
                 >
-                  Campus Delivery
+                  🛵 Campus Delivery
                 </button>
                 <button
                   type="button"
                   className={`cart-mode-btn ${orderType === 'pickup' ? 'active' : ''}`}
                   onClick={() => setOrderType('pickup')}
                 >
-                  Counter Pickup
+                  🥡 Counter Pickup
                 </button>
               </div>
             </div>
 
+            {/* Step 1 Section: Contact & Delivery Info */}
             <div className="form-group-section">
-              <label className="field-group-title">Contact Information</label>
+              <label className="field-group-title">2. Contact & Delivery Location</label>
+              
               <label className="input-field-wrap">
                 <span>Full Name</span>
                 <input
                   value={f.name}
                   onChange={e => setF({ ...f, name: e.target.value })}
-                  placeholder="e.g. Kofi Annan"
+                  placeholder="e.g. Julie Martin"
                 />
               </label>
 
               <label className="input-field-wrap">
-                <span>Phone Number (for SMS & Rider WhatsApp)</span>
+                <span>Phone Number (for SMS & WhatsApp dispatch)</span>
                 <input
                   type="tel"
                   value={f.phone}
                   onChange={e => setF({ ...f, phone: e.target.value })}
-                  placeholder="0241234567"
+                  placeholder="024 123 4567"
                 />
               </label>
 
               {orderType === 'delivery' && (
                 <label className="input-field-wrap">
-                  <span>Delivery Address / Hostel & Room</span>
+                  <span>Hostel / Block & Room Number</span>
                   <input
                     value={f.address}
                     onChange={e => setF({ ...f, address: e.target.value })}
-                    placeholder="Hostel name, Block & Room number"
+                    placeholder="e.g. Hall 3, Block B, Room 14 (CUG Fiapre)"
                   />
                 </label>
               )}
+
+              <label className="input-field-wrap">
+                <span>Order Note or Cooking Instructions (Optional)</span>
+                <input
+                  value={f.note || ''}
+                  onChange={e => setF({ ...f, note: e.target.value })}
+                  placeholder="e.g. Less pepper, extra shito, call on arrival"
+                />
+              </label>
             </div>
 
+            {/* Step 1 Section: Payment Method */}
             <div className="form-group-section">
-              <label className="field-group-title">Payment Method</label>
+              <label className="field-group-title">3. Payment Method</label>
               <div className="payment-options-grid">
                 <label className={`payment-card-opt ${f.pay === 'momo' ? 'selected' : ''}`}>
                   <input
@@ -857,8 +946,11 @@ export function Checkout() {
                     onChange={() => setF({ ...f, pay: 'momo' })}
                   />
                   <div className="payment-opt-info">
-                    <b>Mobile Money (MTN / Telecel)</b>
-                    <small>Prompt sent to phone on dispatch</small>
+                    <div className="payment-title-row">
+                      <b>📱 Mobile Money (MTN / Telecel / AT)</b>
+                      <span className="pay-badge-popular">Instant</span>
+                    </div>
+                    <small>Payment authorization prompt sent to your phone</small>
                   </div>
                 </label>
 
@@ -870,8 +962,10 @@ export function Checkout() {
                     onChange={() => setF({ ...f, pay: 'cash' })}
                   />
                   <div className="payment-opt-info">
-                    <b>Pay on Collection / Delivery</b>
-                    <small>Pay with cash or MoMo at counter</small>
+                    <div className="payment-title-row">
+                      <b>💵 Pay on Delivery / Counter</b>
+                    </div>
+                    <small>Pay with cash or MoMo directly when food is received</small>
                   </div>
                 </label>
               </div>
@@ -896,17 +990,56 @@ export function Checkout() {
           </>
         ) : (
           <div className="checkout-review-step">
-            <h3 className="review-heading">Order Summary</h3>
+            <h3 className="review-heading">Review & Confirm Your Order</h3>
 
+            {/* Order Items Preview */}
             <div className="review-items-box">
-              {lines.map(l => (
-                <div key={l.id} className="review-item-row">
-                  <span>{l.qty} × {l.it.name}</span>
-                  <b>{money(price(l.it) * l.qty)}</b>
-                </div>
-              ))}
+              <span className="review-box-title">Order Items ({lines.length})</span>
+              {lines.map(l => {
+                const lineId = l.lineId || l.id
+                return (
+                  <div key={lineId} className="review-item-row">
+                    <div className="review-item-left">
+                      <b>{l.qty} × {l.it.name}</b>
+                      {l.extrasList && l.extrasList.length > 0 && (
+                        <span className="review-extras-note">
+                          +{l.extrasList.map(e => e.name).join(', ')}
+                        </span>
+                      )}
+                    </div>
+                    <b className="review-item-price">{money(l.lineTotal || (price(l.it) * l.qty))}</b>
+                  </div>
+                )
+              })}
             </div>
 
+            {/* Delivery & Contact Note */}
+            <div className="review-delivery-note">
+              <div className="review-note-row">
+                <b>📍 Branch:</b> <span>{BRANCHES.find(b => b.id === branch)?.name}</span>
+              </div>
+              <div className="review-note-row">
+                <b>👤 Contact:</b> <span>{f.name} ({f.phone})</span>
+              </div>
+              <div className="review-note-row">
+                <b>🛵 Mode:</b> <span>{orderType === 'delivery' ? 'Campus Delivery' : 'Counter Pickup'}</span>
+              </div>
+              {orderType === 'delivery' && (
+                <div className="review-note-row">
+                  <b>🏠 Address:</b> <span>{f.address}</span>
+                </div>
+              )}
+              {f.note && (
+                <div className="review-note-row">
+                  <b>📝 Note:</b> <span>{f.note}</span>
+                </div>
+              )}
+              <div className="review-note-row">
+                <b>💳 Payment:</b> <span>{f.pay === 'momo' ? 'Mobile Money (Prompt on Phone)' : 'Pay on Delivery / Counter'}</span>
+              </div>
+            </div>
+
+            {/* Price Breakdown */}
             <div className="review-breakdown-box">
               <div className="review-row">
                 <span>Subtotal</span>
@@ -914,34 +1047,27 @@ export function Checkout() {
               </div>
               {discount > 0 && (
                 <div className="review-row discount-text">
-                  <span>Discount</span>
+                  <span>Voucher Discount ({promoCode})</span>
                   <span>-{money(discount)}</span>
                 </div>
               )}
               <div className="review-row">
-                <span>{orderType === 'delivery' ? 'Delivery' : 'Pickup'}</span>
+                <span>{orderType === 'delivery' ? 'Campus Delivery' : 'Pickup Fee'}</span>
                 <span>{deliveryFee > 0 ? money(deliveryFee) : 'FREE'}</span>
               </div>
-              <hr />
+              <hr className="review-divider" />
               <div className="review-row total-row">
-                <b>Total Amount</b>
+                <b>Total Amount to Pay</b>
                 <b className="total-highlight-val">{money(total)}</b>
               </div>
             </div>
 
-            <div className="review-delivery-note">
-              <p><b>Branch:</b> {BRANCHES.find(b => b.id === branch)?.name}</p>
-              <p><b>Contact:</b> {f.name} ({f.phone})</p>
-              <p><b>Payment:</b> {f.pay === 'momo' ? 'Mobile Money (Prompt on Phone)' : 'Pay on Delivery / Counter'}</p>
-              {orderType === 'delivery' && <p><b>Address:</b> {f.address}</p>}
-            </div>
-
             <div className="review-action-btns">
               <button className="btn-back-step" onClick={() => setStep(1)}>
-                ← Back
+                ← Back to Edit
               </button>
               <button className="btn-order-cta grow" onClick={submit}>
-                Confirm & Place Order
+                Confirm & Place Order · {money(total)}
               </button>
             </div>
           </div>

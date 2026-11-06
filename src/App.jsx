@@ -150,11 +150,8 @@ export default function App() {
           onSelectAccount={loginGoogle}
         />
 
-        {/* Static Bottom Navigation Bar (Home, Menu, Basket, Track, Account) */}
-        <BottomNavBar activePath={path} />
-
-        {/* Footer */}
-        <footer className="modern-footer">
+        {/* Footer - Strictly hidden in phone view / mobile */}
+        <footer className="modern-footer desktop-only-footer">
           <div className="footer-container">
             <div className="footer-top-row">
               <Wordmark light />
@@ -169,6 +166,9 @@ export default function App() {
             </p>
           </div>
         </footer>
+
+        {/* Static Bottom Navigation Bar (Always at the very bottom of the screen) */}
+        <BottomNavBar activePath={path} />
 
         {/* Toast Notification */}
         {toast && <div className="toast-pill">{toast}</div>}
