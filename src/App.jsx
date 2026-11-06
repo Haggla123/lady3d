@@ -94,6 +94,7 @@ export default function App() {
   else if (seg[0] === 'food') pageContent = <FoodPage id={seg[1]} />
   else if (seg[0] === 'cart') pageContent = <Cart />
   else if (seg[0] === 'checkout') pageContent = <Checkout />
+  else if (seg[0] === 'success') pageContent = <OrderSuccess key={seg[1]} refId={seg[1]} />
   else if (seg[0] === 'track') pageContent = <Track key={seg[1]} refId={seg[1]} />
   else if (seg[0] === 'account') pageContent = <Account />
   else if (seg[0] === 'login') pageContent = <SignIn />
