@@ -3146,6 +3146,71 @@ button, input, select, textarea {
 }
 
 /* ==========================================================================
+   Prominent / Floating Center Cart Button (Bigger than other nav buttons)
+   ========================================================================== */
+
+.bottom-nav-item.bottom-nav-cart-prominent {
+  overflow: visible;
+  min-height: 52px;
+  position: relative;
+  z-index: 10;
+}
+
+.bottom-cart-circle {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #A81822 0%, #750F16 100%);
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 18px rgba(128, 20, 27, 0.42), 0 2px 6px rgba(0, 0, 0, 0.1);
+  border: 3.5px solid #FFFFFF;
+  margin-top: -18px;
+  position: relative;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bottom-nav-item.bottom-nav-cart-prominent:hover .bottom-cart-circle,
+.bottom-nav-item.bottom-nav-cart-prominent.active .bottom-cart-circle {
+  transform: translateY(-3px) scale(1.08);
+  background: linear-gradient(135deg, #BA1C28 0%, #88121B 100%);
+  box-shadow: 0 10px 24px rgba(128, 20, 27, 0.5);
+}
+
+.bottom-nav-item.bottom-nav-cart-prominent.active::after {
+  display: none !important;
+}
+
+.bottom-cart-badge {
+  position: absolute;
+  top: -4px;
+  right: -5px;
+  background: #E5A53F;
+  color: #1C1917;
+  font-size: 0.74rem;
+  font-weight: 900;
+  min-width: 21px;
+  height: 21px;
+  padding: 0 5px;
+  border-radius: 9999px;
+  border: 2px solid #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  line-height: 1;
+}
+
+.bottom-cart-label {
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: #80141B;
+  margin-top: 2px;
+}
+
+/* ==========================================================================
    Footer (Strictly Hidden in Phone View / Mobile Screens)
    ========================================================================== */
 
