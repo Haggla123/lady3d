@@ -441,6 +441,66 @@ export function BottomNavBar({ activePath = '/' }) {
   )
 }
 
+export function MobileTopNav({ activePath = '/' }) {
+  const { count, user, branch, setBranch } = useApp()
+  const seg = activePath.split('?')[0].split('/').filter(Boolean)
+  const isHome = !seg.length
+
+  const getTitle = () => {
+    if (!seg.length) return "Lady 3D's"
+    if (seg[0] === 'menu') return 'Our Menu'
+    if (seg[0] === 'cart') return 'Order Basket'
+    if (seg[0] === 'checkout') return 'Checkout'
+    if (seg[0] === 'track') return 'Track Order'
+    if (seg[0] === 'account') return user ? 'My Account' : 'Account'
+    if (seg[0] === 'community') return 'Community'
+    if (seg[0] === 'food') return 'Meal Details'
+    if (seg[0] === 'success') return 'Order Confirmed'
+    return "Lady 3D's"
+  }
+
+  const getBackTarget = () => {
+    if (seg[0] === 'checkout') return '/cart'
+    if (seg[0] === 'food') return '/menu'
+    return '/'
+  }
+
+  return (
+    <header className="mobile-app-top-header" aria-label="Mobile Navigation">
+      <div className="mobile-header-inner">
+        {isHome ? (
+          <Link to="/" className="mobile-header-brand-link">
+            <img src="/lady3d-logo.jpg" alt="Lady 3D's" className="mobile-header-logo-img" />
+            <div className="mobile-brand-titles">
+              <b className="mobile-brand-head">LADY 3D’S</b>
+              <span className="mobile-brand-subhead">CATERING SERVICES</span>
+            </div>
+          </Link>
+        ) : (
+          <div className="mobile-header-left-slot">
+            <Link to={getBackTarget()} className="mobile-header-back-btn" aria-label="Go back">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+              </svg>
+            </Link>
+            <h1 className="mobile-header-title">{getTitle()}</h1>
+          </div>
+        )}
+
+        <div className="mobile-header-right-slot">
+          <BranchPicker variant="compact-pill" />
+          <Link to="/account" className="mobile-action-circle" title="Account profile" aria-label="Account">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+          </Link>
+        </div>
+      </div>
+    </header>
+  )
+}
+
 export function GoogleIcon() {
   return (
     <svg viewBox="0 0 24 24" width="20" height="20" className="google-svg-icon">

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { go, money, useApp, useHash } from './store.jsx'
-import { Link, Wordmark, BranchPicker, BottomNavBar, FoodDetailModal, GoogleAuthModal } from './components/ui.jsx'
+import { Link, Wordmark, BranchPicker, BottomNavBar, MobileTopNav, FoodDetailModal, GoogleAuthModal } from './components/ui.jsx'
 import { Onboarding, Home, Menu, FoodPage, Cart, Checkout, OrderSuccess, Track, Account, Community, SignIn, SignUp } from './pages/Customer.jsx'
 import Admin from './pages/Admin.jsx'
 import BranchDashboard from './pages/BranchDashboard.jsx'
@@ -132,6 +132,9 @@ export default function App() {
             </div>
           </div>
         </header>
+
+        {/* Mobile Top App Header (Native App Bar on Phones) */}
+        <MobileTopNav activePath={path} />
 
         {/* Main Content Pane */}
         <main className="modern-main-content">

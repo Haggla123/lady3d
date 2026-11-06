@@ -107,25 +107,6 @@ export function Home() {
 
   return (
     <div className="home-modern-view">
-      {/* Mobile Top Brand Bar (Arby's / Bon Appétit style) */}
-      <section className="home-mobile-brand-bar">
-        <div className="mobile-brand-group">
-          <img src="/lady3d-logo.jpg" alt="Lady 3D's" className="mobile-header-logo-img" />
-          <div className="mobile-brand-titles">
-            <b className="mobile-brand-head">LADY 3D’S</b>
-            <span className="mobile-brand-subhead">CATERING SERVICES</span>
-          </div>
-        </div>
-        <div className="mobile-brand-actions">
-          <Link to="/community" className="mobile-action-circle" title="Community & Reviews">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          </Link>
-          <Link to="/account" className="mobile-action-circle" title="Account profile">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          </Link>
-        </div>
-      </section>
-
       {/* Top Location & Delivery Bar */}
       <section className="home-top-bar">
         <div className="location-info-block">
