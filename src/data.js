@@ -315,13 +315,60 @@ export const REVIEWS = [
 ]
 
 export const ROLES = {
-  Owner: ['overview', 'orders', 'menu', 'categories', 'branches', 'customers', 'loyalty', 'promos', 'payments', 'analytics', 'reviews', 'staff', 'settings'],
-  Manager: ['overview', 'orders', 'menu', 'categories', 'branches', 'customers', 'loyalty', 'promos', 'reviews'],
-  Cashier: ['overview', 'orders'],
+  Owner: ['overview', 'orders', 'branch-dashboards', 'menu', 'categories', 'branches', 'customers', 'loyalty', 'promos', 'payments', 'analytics', 'reviews', 'staff', 'settings'],
+  Manager: ['overview', 'orders', 'branch-dashboards', 'menu', 'categories', 'branches', 'customers', 'loyalty', 'promos', 'reviews'],
+  Cashier: ['overview', 'orders', 'branch-dashboards'],
 }
 
 export const ADMIN_NAV = [
-  ['overview', 'Overview'], ['orders', 'Orders'], ['menu', 'Menu'], ['categories', 'Categories'], ['branches', 'Branch menu & prices'],
-  ['customers', 'Customers'], ['loyalty', 'Loyalty & rewards'], ['promos', 'Promotions'], ['payments', 'Payments'],
-  ['analytics', 'Sales reports'], ['reviews', 'Reviews & feedback'], ['staff', 'Staff & roles'], ['settings', 'Settings'],
+  ['overview', 'Overview'],
+  ['orders', 'Kitchen & Orders'],
+  ['branch-dashboards', 'Branch Dashboards'],
+  ['menu', 'Menu'],
+  ['categories', 'Categories'],
+  ['branches', 'Branch menu & prices'],
+  ['customers', 'Customers'],
+  ['loyalty', 'Loyalty & rewards'],
+  ['promos', 'Promotions'],
+  ['payments', 'Payments'],
+  ['analytics', 'Sales reports'],
+  ['reviews', 'Reviews & feedback'],
+  ['staff', 'Staff & roles'],
+  ['settings', 'Settings'],
 ]
+
+export function getBranchWhatsApp(branchId) {
+  const b = BRANCHES.find(x => x.id === branchId) || BRANCHES[0]
+  const clean = (b.whatsapp || '053 129 9243').replace(/\D/g, '')
+  return clean.startsWith('0') ? '233' + clean.slice(1) : clean
+}
+
+export function buildOrderWhatsAppUrl(order) {
+  const branchObj = BRANCHES.find(b => b.id === order?.branch) || BRANCHES[0]
+  const phone = getBranchWhatsApp(order?.branch)
+
+  const itemsText = (order.items || []).map(i => {
+    const extrasStr = i.extras && i.extras.length ? ` (+ ${i.extras.map(e => e.name).join(', ')})` : ''
+    return `• ${i.qty}x ${i.name}${extrasStr} - GH₵ ${(i.price || i.unitPrice || 0) * i.qty}`
+  }).join('\n')
+
+  const msg = 
+`*NEW ORDER - LADY 3D'S CATERING*
+--------------------------------
+*Branch:* ${branchObj.name}
+*Order Ref:* #${order.ref}
+*Customer:* ${order.name} (${order.phone})
+*Order Type:* ${order.orderType === 'delivery' ? 'Campus Delivery' : 'Counter Pickup'}
+${order.address ? `*Address/Room:* ${order.address}\n` : ''}
+*Items Ordered:*
+${itemsText}
+
+*Subtotal:* GH₵ ${order.subtotal || order.total}
+${order.discount ? `*Discount:* -GH₵ ${order.discount}\n` : ''}${order.deliveryFee ? `*Delivery Fee:* GH₵ ${order.deliveryFee}\n` : ''}*TOTAL AMOUNT:* GH₵ ${order.total}
+*Payment Method:* ${order.pay === 'momo' ? 'Mobile Money (Prompt)' : 'Pay on Collection/Delivery'}
+*Payment Status:* ${order.paid ? 'PAID' : 'PENDING'}
+--------------------------------
+_Order placed via Lady 3D's Catering Mobile App_`
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`
+}

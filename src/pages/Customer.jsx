@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { go, money, useApp } from '../store.jsx'
 import { Link, Food, DishCard, BranchPicker, Stars, GoogleIcon, CategoryIcon } from '../components/ui.jsx'
-import { STATUSES, BRANCHES, CATEGORIES_WITH_ICONS, PROMO_CODES, EXTRAS } from '../data.js'
+import { STATUSES, BRANCHES, CATEGORIES_WITH_ICONS, PROMO_CODES, EXTRAS, buildOrderWhatsAppUrl } from '../data.js'
 
 // 1. Onboarding / Get Started Sequence (SnapEats Screen 1)
 export function Onboarding({ onStart, onSignIn, onSignUp }) {
@@ -1082,6 +1082,19 @@ export function OrderSuccess({ refId }) {
 
         {/* Action Buttons */}
         <div className="success-action-buttons">
+          {order && (
+            <a
+              href={buildOrderWhatsAppUrl(order)}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-whatsapp-dispatch-primary"
+            >
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.42a8.225 8.225 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.42 0-2.82-.37-4.04-1.08l-.29-.17-3.01.79.8-2.93-.19-.3a8.163 8.163 0 0 1-1.25-4.37c0-4.54 3.7-8.24 8.24-8.24h.01z"/>
+              </svg>
+              <span>Send Order to {branchObj?.short} Kitchen via WhatsApp</span>
+            </a>
+          )}
           <button
             type="button"
             className="btn-track-live"
@@ -1199,6 +1212,20 @@ export function Track({ refId }) {
               <span>Branch: {BRANCHES.find(b => b.id === order.branch)?.name || 'CUG Annex'}</span>
               <span>Mode: {order.orderType === 'delivery' ? 'Campus Delivery' : 'Self Pickup'}</span>
             </div>
+          </div>
+
+          <div className="track-whatsapp-cta-box">
+            <a
+              href={buildOrderWhatsAppUrl(order)}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-whatsapp-track"
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.42a8.225 8.225 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.42 0-2.82-.37-4.04-1.08l-.29-.17-3.01.79.8-2.93-.19-.3a8.163 8.163 0 0 1-1.25-4.37c0-4.54 3.7-8.24 8.24-8.24h.01z"/>
+              </svg>
+              <span>Message {BRANCHES.find(b => b.id === order.branch)?.short || 'Kitchen'} via WhatsApp</span>
+            </a>
           </div>
 
           <div className="track-admin-quickhint">
@@ -1535,7 +1562,7 @@ export function SignUp() {
 
 // 10. Modern Account / Profile Screen (Bon Appétit Screen 5)
 export function Account() {
-  const { user, logoutUser, orders, favs, menu, points, say } = useApp()
+  const { user, logoutUser, orders, favs, menu, points, say, canInstall, installPwa } = useApp()
   const [tab, setTab] = useState('orders')
 
   if (!user) {
@@ -1568,6 +1595,29 @@ export function Account() {
         <button className="btn-logout" onClick={logoutUser} title="Sign out">
           Sign out
         </button>
+      </div>
+
+      {/* Install App on Phone (PWA Option 2) */}
+      <div className="install-pwa-card">
+        <div className="install-pwa-left">
+          <div className="install-pwa-icon">
+            <img src="/lady3d-logo.jpg" alt="Lady 3D" />
+          </div>
+          <div>
+            <h4 className="install-title">Install Lady 3D on Your Phone</h4>
+            <p className="install-subtitle">Fast 1-tap food ordering, instant status updates, and offline access.</p>
+          </div>
+        </div>
+        {canInstall ? (
+          <button className="btn-pwa-install-action" onClick={installPwa}>
+            Install App Now
+          </button>
+        ) : (
+          <div className="pwa-install-guide">
+            <span className="pwa-tip"><b>iPhone:</b> Tap Safari Share <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> then <b>Add to Home Screen</b></span>
+            <span className="pwa-tip"><b>Android:</b> Tap Chrome menu <b>⋮</b> then <b>Install App</b></span>
+          </div>
+        )}
       </div>
 
       {/* Rewards Progress Card */}

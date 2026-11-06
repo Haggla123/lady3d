@@ -1,0 +1,24 @@
+{
+  "short_name": "Lady 3D's",
+  "name": "Lady 3D's Catering Services",
+  "description": "Authentic Ghanaian dishes, student specials, and campus catering in Sunyani",
+  "icons": [
+    {
+      "src": "/lady3d-logo.jpg",
+      "type": "image/jpeg",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/lady3d-logo.jpg",
+      "type": "image/jpeg",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#80141B",
+  "theme_color": "#80141B",
+  "display": "standalone",
+  "orientation": "portrait"
+}

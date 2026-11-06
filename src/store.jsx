@@ -55,6 +55,68 @@ export function AppProvider({ children }) {
   const [role, setRole] = useState('Owner')
   const [activeFood, setActiveFood] = useState(null)
   const [deviceFrame, setDeviceFrame] = useState(false) // Toggle phone frame preview
+  const [deferredPrompt, setDeferredPrompt] = useState(null)
+  const [canInstall, setCanInstall] = useState(false)
+
+  const [staff, setStaff] = useState([
+    { id: 1, name: 'Lady 3D (Lead Caterer)', role: 'Owner', branch: 'all', phone: '024 465 0474', active: true },
+    { id: 2, name: 'Esi (Kitchen Supervisor)', role: 'Manager', branch: 'cug', phone: '053 129 9243', active: true },
+    { id: 3, name: 'Kwame (Cashier & Counter)', role: 'Cashier', branch: 'sunyani', phone: '027 691 3089', active: true },
+    { id: 4, name: 'Adwoa (Line Chef & Prep)', role: 'Kitchen Chef', branch: 'cug', phone: '053 129 9243', active: true }
+  ])
+
+  const [customers, setCustomers] = useState([
+    { id: 1, name: 'Kofi Mensah', phone: '027 691 3089', branch: 'cug', ordersCount: 14, spent: 480, points: 48, status: 'VIP Member' },
+    { id: 2, name: 'Ama Boateng', phone: '053 129 9243', branch: 'cug', ordersCount: 9, spent: 315, points: 31, status: 'Regular' },
+    { id: 3, name: 'Yaw Manu', phone: '024 465 0474', branch: 'sunyani', ordersCount: 6, spent: 270, points: 27, status: 'Regular' },
+    { id: 4, name: 'Julie Martin', phone: '024 123 4567', branch: 'cug', ordersCount: 4, spent: 160, points: 16, status: 'New Customer' },
+    { id: 5, name: 'Efua Mensah', phone: '055 987 6543', branch: 'sunyani', ordersCount: 8, spent: 390, points: 39, status: 'Regular' }
+  ])
+
+  const [loyaltyRules, setLoyaltyRules] = useState({
+    spendPerPoint: 10,
+    rewardThreshold: 50,
+    promoDiscount: 20
+  })
+
+  const [settings, setSettings] = useState({
+    businessName: "Lady 3D's Catering Services",
+    cugWhatsapp: '053 129 9243',
+    sunyaniWhatsapp: '053 129 9243',
+    cateringPhone: '024 465 0474',
+    generalPhone: '027 691 3089',
+    hours: 'Daily, 7:00 AM – 8:00 PM'
+  })
+
+  const [branchStatus, setBranchStatus] = useState({
+    cug: { open: true, notice: 'Fiapre campus kitchen open! Fresh hot student & faculty lunch packs ready.', supervisor: 'Esi (Kitchen Supervisor)' },
+    sunyani: { open: true, notice: 'Main branch kitchen open at Market Circle. Local & continental specials live.', supervisor: 'Kwame (Branch Manager)' }
+  })
+
+  useEffect(() => {
+    const handler = e => {
+      e.preventDefault()
+      setDeferredPrompt(e)
+      setCanInstall(true)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  const installPwa = async () => {
+    if (!deferredPrompt) return
+    deferredPrompt.prompt()
+    try {
+      const res = await deferredPrompt.userChoice
+      if (res?.outcome === 'accepted') {
+        setCanInstall(false)
+        setDeferredPrompt(null)
+        say('Lady 3D App installed to home screen!')
+      }
+    } catch (err) {
+      console.warn('Install error:', err)
+    }
+  }
 
   const say = m => {
     setToast(m)
@@ -230,7 +292,8 @@ export function AppProvider({ children }) {
     cart, add, setQty, lines,
     subtotal, discount, deliveryFee, total, count,
     price, ok,
-    place, orders, setStatus, markPaid,
+    place, orders, setOrders, setStatus, markPaid,
+    branchStatus, setBranchStatus,
     user, setUser, loginUser, logoutUser, loginGoogle, googleModal, setGoogleModal,
     favs, setFavs, toggleFav,
     points, setPoints,
@@ -241,7 +304,12 @@ export function AppProvider({ children }) {
     promoCode, setPromoCode, promoError, applyPromo, removePromo,
     role, setRole,
     activeFood, setActiveFood,
-    deviceFrame, setDeviceFrame
+    deviceFrame, setDeviceFrame,
+    canInstall, installPwa,
+    staff, setStaff,
+    customers, setCustomers,
+    loyaltyRules, setLoyaltyRules,
+    settings, setSettings
   }
 
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>

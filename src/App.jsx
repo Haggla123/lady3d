@@ -3,6 +3,7 @@ import { go, money, useApp, useHash } from './store.jsx'
 import { Link, Wordmark, BranchPicker, BottomNavBar, FoodDetailModal, GoogleAuthModal } from './components/ui.jsx'
 import { Onboarding, Home, Menu, FoodPage, Cart, Checkout, OrderSuccess, Track, Account, Community, SignIn, SignUp } from './pages/Customer.jsx'
 import Admin from './pages/Admin.jsx'
+import BranchDashboard from './pages/BranchDashboard.jsx'
 
 export default function App() {
   const h = useHash()
@@ -27,6 +28,17 @@ export default function App() {
     return (
       <>
         <Admin section={seg[1]} />
+        {toast && <div className="toast-pill">{toast}</div>}
+      </>
+    )
+  }
+
+  // If user accesses /branch, /branch/sunyani, or /branch/cug directly
+  if (seg[0] === 'branch') {
+    const branchTarget = seg[1] === 'sunyani' ? 'sunyani' : 'cug'
+    return (
+      <>
+        <BranchDashboard branchId={branchTarget} section={seg[2] || 'overview'} />
         {toast && <div className="toast-pill">{toast}</div>}
       </>
     )
@@ -195,7 +207,9 @@ export default function App() {
             <div className="footer-top-row">
               <Wordmark light />
               <div className="footer-links">
-                <Link to="/admin/overview" className="footer-admin-link">Staff & Owner Admin</Link>
+                <Link to="/admin/overview" className="footer-admin-link">Master Admin</Link>
+                <Link to="/branch/cug" className="footer-admin-link">CUG Campus Kitchen</Link>
+                <Link to="/branch/sunyani" className="footer-admin-link">Sunyani Main Kitchen</Link>
                 <button
                   className="footer-replay-link"
                   onClick={() => {
