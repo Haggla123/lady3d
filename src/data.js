@@ -5,11 +5,11 @@ export const BRANCHES = [
 ]
 
 export const STATUSES = [
-  { label: 'Received', desc: 'Order received by the kitchen', icon: '📝' },
-  { label: 'Confirmed', desc: 'Kitchen confirmed your order', icon: '👨‍🍳' },
-  { label: 'Preparing', desc: 'Cooking your fresh meal', icon: '🔥' },
-  { label: 'Ready for Collection', desc: 'Packed and waiting for you', icon: '🛍️' },
-  { label: 'Collected', desc: 'Delivered & enjoyed', icon: '✨' },
+  { label: 'Received', desc: 'Order received by the kitchen', step: '1' },
+  { label: 'Confirmed', desc: 'Kitchen confirmed your order', step: '2' },
+  { label: 'Preparing', desc: 'Cooking your fresh meal', step: '3' },
+  { label: 'Ready for Collection', desc: 'Packed and ready for pickup', step: '4' },
+  { label: 'Collected', desc: 'Order completed and delivered', step: '5' },
 ]
 
 const a = (c = true, s = true) => ({ cug: c, sunyani: s })
@@ -168,12 +168,12 @@ export const MENU = [
 ]
 
 export const CATEGORIES_WITH_ICONS = [
-  { name: 'All', icon: '🍽️', label: 'All Items' },
-  { name: 'Rice', icon: '🍚', label: 'Jollof & Fried' },
-  { name: 'Waakye', icon: '🍛', label: 'Waakye Bowls' },
-  { name: 'Banku & Fufu', icon: '🥣', label: 'Swallow Meals' },
-  { name: 'Soups & Stews', icon: '🍲', label: 'Hot Stews' },
-  { name: 'Sides & Drinks', icon: '🥤', label: 'Drinks & Sides' },
+  { name: 'All', key: 'all', label: 'All Meals' },
+  { name: 'Rice', key: 'rice', label: 'Jollof & Fried' },
+  { name: 'Waakye', key: 'waakye', label: 'Waakye Plates' },
+  { name: 'Banku & Fufu', key: 'swallow', label: 'Swallow Dishes' },
+  { name: 'Soups & Stews', key: 'stews', label: 'Hot Stews' },
+  { name: 'Sides & Drinks', key: 'drinks', label: 'Drinks & Sides' },
 ]
 
 export const PROMO_CODES = {

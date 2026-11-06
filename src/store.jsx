@@ -29,7 +29,17 @@ export function AppProvider({ children }) {
   const [orderType, setOrderType] = useState('delivery') // 'delivery' | 'pickup'
   const [cart, setCart] = useState([])
   const [orders, setOrders] = useState(SEED_ORDERS)
-  const [user, setUser] = useState({ name: 'Julie Martin', email: 'julie.martin@cug.edu.gh' })
+  
+  // Persistent user state with Google auth support
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('lady3d-user')
+      if (saved) return JSON.parse(saved)
+    } catch (e) {}
+    return null
+  })
+  
+  const [googleModal, setGoogleModal] = useState(false)
   const [favs, setFavs] = useState([1, 2])
   const [points, setPoints] = useState(38)
   const [reviews, setReviews] = useState(REVIEWS)
@@ -49,6 +59,34 @@ export function AppProvider({ children }) {
   const say = m => {
     setToast(m)
     setTimeout(() => setToast(''), 2600)
+  }
+
+  const loginUser = userData => {
+    setUser(userData)
+    try {
+      localStorage.setItem('lady3d-user', JSON.stringify(userData))
+    } catch (e) {}
+    say(`Welcome back, ${userData.name}!`)
+  }
+
+  const logoutUser = () => {
+    setUser(null)
+    try {
+      localStorage.removeItem('lady3d-user')
+    } catch (e) {}
+    say('You have been logged out.')
+  }
+
+  const loginGoogle = (googleAccount) => {
+    const acc = googleAccount || {
+      name: 'Julie Martin',
+      email: 'julie.martin@cug.edu.gh',
+      phone: '0241234567',
+      googleAuth: true,
+      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80'
+    }
+    loginUser(acc)
+    setGoogleModal(false)
   }
 
   const price = it => priceAt(it, branch || 'cug')
@@ -132,7 +170,7 @@ export function AppProvider({ children }) {
     const paid = o?.paid || o?.pay === 'cash'
     if (s === 4 && o?.status !== 4 && o?.mine && paid && o?.total >= 20) {
       setPoints(p => p + Math.floor(o.total / 10))
-      say('Loyalty points awarded! 🎉')
+      say('Loyalty points awarded!')
     }
   }
 
@@ -147,7 +185,7 @@ export function AppProvider({ children }) {
     subtotal, discount, deliveryFee, total, count,
     price, ok,
     place, orders, setStatus, markPaid,
-    user, setUser,
+    user, setUser, loginUser, logoutUser, loginGoogle, googleModal, setGoogleModal,
     favs, setFavs, toggleFav,
     points, setPoints,
     reviews, setReviews,

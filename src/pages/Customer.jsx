@@ -1,29 +1,23 @@
 import { useState } from 'react'
 import { go, money, useApp } from '../store.jsx'
-import { Link, Food, DishCard, BranchPicker, Stars } from '../components/ui.jsx'
+import { Link, Food, DishCard, BranchPicker, Stars, GoogleIcon, CategoryIcon } from '../components/ui.jsx'
 import { STATUSES, BRANCHES, CATEGORIES_WITH_ICONS, PROMO_CODES } from '../data.js'
 
 // 1. Onboarding / Get Started Sequence (SnapEats Screen 1)
-export function Onboarding({ onStart }) {
+export function Onboarding({ onStart, onSignIn, onSignUp }) {
   const [slide, setSlide] = useState(0)
   const slides = [
     {
       title: "Good Food & Great Taste Made Easy with Lady 3D’s!",
-      desc: "Delicious Ghanaian meals in one click with Lady 3D's Catering! Place orders for authentic waakye, smoky jollof, fresh banku and chilled drinks — fast and convenient.",
-      img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80",
-      tag: "Freshly Made Daily"
+      desc: "Delicious Ghanaian meals in one click with Lady 3D's Catering! Place orders for authentic waakye, smoky jollof, fresh banku and chilled drinks — fast and convenient."
     },
     {
       title: "Fast Campus Pickup & Doorstep Delivery in Sunyani",
-      desc: "Skip long queues between lectures. Order ahead from Catholic University (Fiapre Annex) or Sunyani Main branch and pick up hot meals ready in minutes.",
-      img: "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&w=800&q=80",
-      tag: "Order Ahead"
+      desc: "Skip long queues between lectures. Order ahead from Catholic University (Fiapre Annex) or Sunyani Main branch and pick up hot meals ready in minutes."
     },
     {
       title: "Earn Loyalty Points With Every Delicious Order",
-      desc: "Collect points with every meal you enjoy. Reach 50 points for a completely free plate and get special birthday treats and campus promo discounts.",
-      img: "https://images.unsplash.com/photo-1603133872878-684f208fb84b?auto=format&fit=crop&w=800&q=80",
-      tag: "Lady 3D Rewards"
+      desc: "Collect points with every meal you enjoy. Reach 50 points for a completely free plate and get special birthday treats and campus promo discounts."
     }
   ]
 
@@ -38,8 +32,11 @@ export function Onboarding({ onStart }) {
           <span>LADY 3D’S CATERING</span>
         </div>
         <div className="onboarding-hero-image-wrap">
-          <img src={curr.img} alt="Featured dish" className="onboarding-hero-img" />
-          <span className="onboarding-tag-floating">{curr.tag}</span>
+          <img
+            src="/lady3d-logo.jpg"
+            alt="Lady 3D's Catering Services"
+            className="onboarding-hero-img onboarding-logo-display"
+          />
         </div>
       </div>
 
@@ -61,7 +58,7 @@ export function Onboarding({ onStart }) {
         <div className="onboarding-actions-group">
           {slide < slides.length - 1 ? (
             <div className="onboarding-dual-btns">
-              <button className="btn-secondary-ghost" onClick={onStart}>
+              <button className="btn-secondary-ghost" onClick={() => setSlide(slides.length - 1)}>
                 Skip
               </button>
               <button className="btn-primary-pill" onClick={() => setSlide(slide + 1)}>
@@ -69,9 +66,17 @@ export function Onboarding({ onStart }) {
               </button>
             </div>
           ) : (
-            <button className="btn-primary-pill full-width" onClick={onStart}>
-              Get Started <span>→</span>
-            </button>
+            <div className="onboarding-auth-actions">
+              <button className="btn-primary-pill full-width" onClick={onSignUp}>
+                Sign Up & Get 20% Off <span>→</span>
+              </button>
+              <button className="btn-secondary-pill full-width" onClick={onSignIn}>
+                Sign In with Existing Account
+              </button>
+              <button className="btn-guest-browse" onClick={onStart}>
+                Skip & explore menu as guest →
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -99,12 +104,33 @@ export function Home() {
 
   return (
     <div className="home-modern-view">
+      {/* Mobile Top Brand Bar (Arby's / Bon Appétit style) */}
+      <section className="home-mobile-brand-bar">
+        <div className="mobile-brand-group">
+          <img src="/lady3d-logo.jpg" alt="Lady 3D's" className="mobile-header-logo-img" />
+          <div className="mobile-brand-titles">
+            <b className="mobile-brand-head">LADY 3D’S</b>
+            <span className="mobile-brand-subhead">CATERING SERVICES</span>
+          </div>
+        </div>
+        <div className="mobile-brand-actions">
+          <Link to="/community" className="mobile-action-circle" title="Community & Reviews">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </Link>
+          <Link to="/account" className="mobile-action-circle" title="Account profile">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </Link>
+        </div>
+      </section>
+
       {/* Top Location & Delivery Bar */}
       <section className="home-top-bar">
         <div className="location-info-block">
           <span className="delivery-to-label">Deliver to</span>
           <div className="location-dropdown-row">
-            <span className="loc-pin-icon">📍</span>
+            <span className="loc-pin-icon">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+            </span>
             <select
               className="location-select"
               value={branch || 'cug'}
@@ -124,13 +150,13 @@ export function Home() {
             className={`toggle-option ${orderType === 'delivery' ? 'active' : ''}`}
             onClick={() => setOrderType('delivery')}
           >
-            🛵 Delivery
+            Delivery
           </button>
           <button
             className={`toggle-option ${orderType === 'pickup' ? 'active' : ''}`}
             onClick={() => setOrderType('pickup')}
           >
-            🛍️ Pickup
+            Pickup
           </button>
         </div>
       </section>
@@ -167,7 +193,9 @@ export function Home() {
       {/* Search Input Bar */}
       <section className="search-bar-section">
         <div className="search-input-box">
-          <span className="search-glass-icon">🔍</span>
+          <span className="search-glass-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </span>
           <input
             type="text"
             placeholder="Craving something special? Find it here..."
@@ -193,7 +221,7 @@ export function Home() {
                 onClick={() => setActiveCat(cat.name)}
               >
                 <div className="category-icon-circle">
-                  <span>{cat.icon}</span>
+                  <CategoryIcon catKey={cat.key} />
                 </div>
                 <span className="category-name-text">{cat.name}</span>
               </button>
@@ -226,7 +254,7 @@ export function Home() {
             <Food item={mealOfTheDay} className="motd-dish-photo" />
           </div>
           <div className="motd-info-col">
-            <div className="motd-pill-badge">🔥 TODAY'S SPECIAL</div>
+            <div className="motd-pill-badge">TODAY'S SPECIAL</div>
             <h3 className="motd-title">{mealOfTheDay.name}</h3>
             <p className="motd-desc">{mealOfTheDay.desc}</p>
             <div className="motd-price-row">
@@ -240,7 +268,7 @@ export function Home() {
       {/* Lady 3D Loyalty Rewards Banner (Arby's style) */}
       <section className="loyalty-rewards-banner">
         <div className="rewards-icon-badge">
-          <span>👑</span>
+          <span className="rewards-monogram-3d">3D</span>
         </div>
         <div className="rewards-text-col">
           <h3 className="rewards-banner-title">LADY 3D REWARDS</h3>
@@ -285,7 +313,9 @@ export function Menu() {
 
       <div className="menu-search-filter-box">
         <div className="search-input-box">
-          <span className="search-glass-icon">🔍</span>
+          <span className="search-glass-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </span>
           <input
             placeholder="Search waakye, jollof, banku, tilapia..."
             value={q}
@@ -338,7 +368,6 @@ export function Menu() {
         </div>
       ) : (
         <div className="empty-state-card">
-          <span className="empty-icon">🍲</span>
           <h3>No dishes found</h3>
           <p>Try resetting the category filter or searching for another dish.</p>
           <button className="btn-reset-filters" onClick={() => { setCat('All'); setQ(''); setMaxPrice(100); setOnlyAvail(false) }}>
@@ -398,21 +427,18 @@ export function FoodPage({ id }) {
 
           <div className="detail-specs-box">
             <div className="spec-tile">
-              <span className="spec-tile-icon">⏱️</span>
               <div>
                 <b>{it.prepTime || '15 min'}</b>
                 <small>Average Prep</small>
               </div>
             </div>
             <div className="spec-tile">
-              <span className="spec-tile-icon">📍</span>
               <div>
                 <b>{BRANCHES.find(b => b.id === branch)?.short || 'Campus'}</b>
                 <small>Branch</small>
               </div>
             </div>
             <div className="spec-tile">
-              <span className="spec-tile-icon">✨</span>
               <div>
                 <b>100% Fresh</b>
                 <small>Cooked Daily</small>
@@ -422,7 +448,7 @@ export function FoodPage({ id }) {
 
           {!isAvail && (
             <div className="modal-alert-box">
-              ⚠️ Not available today at this branch. Please choose another meal or switch branch.
+              Notice: Currently not available at this branch. Please choose another meal or switch branch.
             </div>
           )}
 
@@ -456,7 +482,13 @@ export function Cart() {
   if (!count) {
     return (
       <div className="cart-empty-screen">
-        <div className="empty-cart-illu">🛍️</div>
+        <div className="empty-cart-illu">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <path d="M16 10a4 4 0 0 1-8 0"/>
+          </svg>
+        </div>
         <h2>Your basket is empty</h2>
         <p>Looks like you haven’t added any delicious meals to your basket yet.</p>
         <Link to="/menu" className="btn-primary-pill">
@@ -480,13 +512,13 @@ export function Cart() {
           className={`cart-mode-btn ${orderType === 'delivery' ? 'active' : ''}`}
           onClick={() => setOrderType('delivery')}
         >
-          🛵 Campus Delivery
+          Campus Delivery
         </button>
         <button
           className={`cart-mode-btn ${orderType === 'pickup' ? 'active' : ''}`}
           onClick={() => setOrderType('pickup')}
         >
-          🛍️ Counter Pickup
+          Counter Pickup
         </button>
       </div>
 
@@ -504,7 +536,7 @@ export function Cart() {
                 <h3 className="cart-item-name">{line.it.name}</h3>
                 <span className="cart-item-unit-price">{money(price(line.it))} each</span>
                 {!isLineAvail && (
-                  <span className="cart-item-warn-tag">⚠️ Unavailable at selected branch</span>
+                  <span className="cart-item-warn-tag">Notice: Unavailable at selected branch</span>
                 )}
               </div>
 
@@ -521,7 +553,7 @@ export function Cart() {
                   onClick={() => setQty(line.id, 0)}
                   aria-label="Remove item"
                 >
-                  🗑️
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                 </button>
               </div>
             </div>
@@ -654,14 +686,14 @@ export function Checkout() {
                   className={`cart-mode-btn ${orderType === 'delivery' ? 'active' : ''}`}
                   onClick={() => setOrderType('delivery')}
                 >
-                  🛵 Campus Delivery
+                  Campus Delivery
                 </button>
                 <button
                   type="button"
                   className={`cart-mode-btn ${orderType === 'pickup' ? 'active' : ''}`}
                   onClick={() => setOrderType('pickup')}
                 >
-                  🛍️ Counter Pickup
+                  Counter Pickup
                 </button>
               </div>
             </div>
@@ -710,7 +742,7 @@ export function Checkout() {
                     onChange={() => setF({ ...f, pay: 'momo' })}
                   />
                   <div className="payment-opt-info">
-                    <b>📱 Mobile Money (MTN / Telecel)</b>
+                    <b>Mobile Money (MTN / Telecel)</b>
                     <small>Prompt sent to phone on dispatch</small>
                   </div>
                 </label>
@@ -723,7 +755,7 @@ export function Checkout() {
                     onChange={() => setF({ ...f, pay: 'cash' })}
                   />
                   <div className="payment-opt-info">
-                    <b>💵 Pay on Collection / Delivery</b>
+                    <b>Pay on Collection / Delivery</b>
                     <small>Pay with cash or MoMo at counter</small>
                   </div>
                 </label>
@@ -734,7 +766,7 @@ export function Checkout() {
               <div className="checkout-alert-box">
                 {bad.map(l => (
                   <p key={l.id}>
-                    ⚠️ <b>{l.it.name}</b> is not available at {BRANCHES.find(b => b.id === branch)?.short}.
+                    <span className="alert-symbol">!</span> <b>{l.it.name}</b> is not available at {BRANCHES.find(b => b.id === branch)?.short}.
                     <button className="btn-link-remove" onClick={() => setQty(l.id, 0)}>Remove</button>
                   </p>
                 ))}
@@ -783,10 +815,10 @@ export function Checkout() {
             </div>
 
             <div className="review-delivery-note">
-              <p><b>📍 Branch:</b> {BRANCHES.find(b => b.id === branch)?.name}</p>
-              <p><b>👤 Contact:</b> {f.name} ({f.phone})</p>
-              <p><b>💳 Payment:</b> {f.pay === 'momo' ? 'Mobile Money (Prompt on Phone)' : 'Pay on Delivery / Counter'}</p>
-              {orderType === 'delivery' && <p><b>🏠 Address:</b> {f.address}</p>}
+              <p><b>Branch:</b> {BRANCHES.find(b => b.id === branch)?.name}</p>
+              <p><b>Contact:</b> {f.name} ({f.phone})</p>
+              <p><b>Payment:</b> {f.pay === 'momo' ? 'Mobile Money (Prompt on Phone)' : 'Pay on Delivery / Counter'}</p>
+              {orderType === 'delivery' && <p><b>Address:</b> {f.address}</p>}
             </div>
 
             <div className="review-action-btns">
@@ -794,7 +826,7 @@ export function Checkout() {
                 ← Back
               </button>
               <button className="btn-order-cta grow" onClick={submit}>
-                Confirm & Place Order ✨
+                Confirm & Place Order
               </button>
             </div>
           </div>
@@ -859,7 +891,7 @@ export function Track({ refId }) {
                   className={`flow-step ${isPast ? 'done' : ''} ${isCurrent ? 'current' : ''}`}
                 >
                   <div className="flow-step-icon">
-                    <span>{step.icon}</span>
+                    <span className="step-num-badge">{idx + 1}</span>
                   </div>
                   <div className="flow-step-body">
                     <b className="flow-step-name">{step.label}</b>
@@ -885,13 +917,13 @@ export function Track({ refId }) {
               <strong className="summary-total-price">{money(order.total)}</strong>
             </div>
             <div className="summary-location-info">
-              <span>📍 {BRANCHES.find(b => b.id === order.branch)?.name || 'CUG Annex'}</span>
-              <span>🛵 {order.orderType === 'delivery' ? 'Campus Delivery' : 'Self Pickup'}</span>
+              <span>Branch: {BRANCHES.find(b => b.id === order.branch)?.name || 'CUG Annex'}</span>
+              <span>Mode: {order.orderType === 'delivery' ? 'Campus Delivery' : 'Self Pickup'}</span>
             </div>
           </div>
 
           <div className="track-admin-quickhint">
-            <span>💡 Testing Tip: Open the <b>Admin Dashboard</b> to advance this order's status and see live updates.</span>
+            <span>Notice: Open the <b>Admin Dashboard</b> to advance this order's status and see live updates.</span>
           </div>
         </div>
       )}
@@ -899,54 +931,336 @@ export function Track({ refId }) {
   )
 }
 
-// 8. Modern Account / Profile Screen (Bon Appétit Screen 5)
-export function Account() {
-  const { user, setUser, orders, favs, menu, points, say } = useApp()
-  const [tab, setTab] = useState('orders')
-  const [mode, setMode] = useState('login')
-  const [f, setF] = useState({ name: 'Julie Martin', email: 'julie.martin@cug.edu.gh' })
+// 8. Sign In Page (Bon Appétit style)
+export function SignIn() {
+  const { user, loginUser, setGoogleModal, say } = useApp()
+  const [email, setEmail] = useState('julie.martin@cug.edu.gh')
+  const [password, setPassword] = useState('••••••••')
+  const [showPassword, setShowPassword] = useState(false)
+  const [rememberMe, setRememberMe] = useState(true)
 
-  if (!user) {
+  if (user) {
     return (
-      <div className="account-auth-card">
-        <div className="auth-brand-badge">
-          <img src="/lady3d-logo.jpg" alt="Lady 3D" />
+      <div className="auth-already-in-card">
+        <div className="auth-user-badge">✓</div>
+        <h2>You are currently signed in</h2>
+        <p>Logged in as <b>{user.name}</b> ({user.email})</p>
+        <div className="auth-redirect-actions">
+          <Link to="/account" className="btn-primary-pill">Go to Account</Link>
+          <Link to="/menu" className="btn-secondary-ghost">Browse Menu</Link>
         </div>
-        <h1>{mode === 'login' ? 'Welcome Back!' : 'Create Account'}</h1>
-        <p className="auth-sub">Sign in to track orders, save favorites and earn rewards.</p>
-
-        {mode === 'reg' && (
-          <label className="input-field-wrap">
-            <span>Full Name</span>
-            <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
-          </label>
-        )}
-
-        <label className="input-field-wrap">
-          <span>Campus or Personal Email</span>
-          <input type="email" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} />
-        </label>
-
-        <label className="input-field-wrap">
-          <span>Password</span>
-          <input type="password" defaultValue="••••••••" />
-        </label>
-
-        <button
-          className="btn-order-cta"
-          onClick={() => {
-            if (!f.email) return say('Please enter your email')
-            setUser({ name: f.name || f.email.split('@')[0], email: f.email })
-          }}
-        >
-          {mode === 'login' ? 'Sign In →' : 'Register Account →'}
-        </button>
-
-        <button className="btn-auth-switch" onClick={() => setMode(mode === 'login' ? 'reg' : 'login')}>
-          {mode === 'login' ? 'New student or customer? Create account' : 'Already have an account? Sign In'}
-        </button>
       </div>
     )
+  }
+
+  const handleSignIn = (e) => {
+    e.preventDefault()
+    if (!email.trim() || !email.includes('@')) {
+      return say('Please enter a valid email address')
+    }
+    const namePart = email.split('@')[0].replace(/[._]/g, ' ')
+    const formattedName = namePart.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+    loginUser({
+      name: formattedName || 'Student Customer',
+      email: email.trim(),
+      phone: '0241234567',
+      googleAuth: false,
+      avatar: ''
+    })
+    go('/account')
+  }
+
+  return (
+    <div className="auth-modern-screen">
+      <div className="auth-card-container">
+        {/* Top visual matching Bon Appétit login */}
+        <div className="auth-header-visual">
+          <div className="auth-brand-circle">
+            <img src="/lady3d-logo.jpg" alt="Lady 3D's" className="auth-brand-logo-img" />
+          </div>
+          <h1 className="auth-title">Welcome Back!</h1>
+          <p className="auth-subtitle">Sign in to continue enjoying hot Ghanaian meals, track orders & earn rewards.</p>
+        </div>
+
+        {/* Google Sign In Button */}
+        <div className="social-auth-section">
+          <button
+            type="button"
+            className="btn-google-auth"
+            onClick={() => setGoogleModal(true)}
+          >
+            <GoogleIcon />
+            <span>Continue with Google</span>
+          </button>
+        </div>
+
+        <div className="auth-divider-line">
+          <span>or sign in with email</span>
+        </div>
+
+        <form onSubmit={handleSignIn} className="auth-form-fields">
+          {/* Quick autofill demo chips */}
+          <div className="auth-quick-autofill">
+            <span className="autofill-hint">Demo accounts:</span>
+            <button
+              type="button"
+              className="autofill-chip"
+              onClick={() => {
+                setEmail('julie.martin@cug.edu.gh')
+                setPassword('password123')
+              }}
+            >
+              Julie Martin (CUG)
+            </button>
+            <button
+              type="button"
+              className="autofill-chip"
+              onClick={() => {
+                setEmail('kofi.mensah@gmail.com')
+                setPassword('password123')
+              }}
+            >
+              Kofi Mensah (Sunyani)
+            </button>
+          </div>
+
+          <label className="input-field-wrap">
+            <span>Email Address</span>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="e.g. name@cug.edu.gh or gmail.com"
+              required
+            />
+          </label>
+
+          <label className="input-field-wrap password-wrap">
+            <div className="password-header-row">
+              <span>Password</span>
+              <button
+                type="button"
+                className="btn-toggle-eye"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="Enter your password"
+              required
+            />
+          </label>
+
+          <div className="auth-extras-row">
+            <label className="remember-checkbox-label">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={e => setRememberMe(e.target.checked)}
+              />
+              <span>Remember me</span>
+            </label>
+            <button
+              type="button"
+              className="btn-forgot-pass"
+              onClick={() => say('Password reset link sent to ' + (email || 'your email'))}
+            >
+              Forgot password?
+            </button>
+          </div>
+
+          <button type="submit" className="btn-auth-submit">
+            Sign In <span>→</span>
+          </button>
+        </form>
+
+        <div className="auth-switch-footer">
+          <p>Don't have an account yet?</p>
+          <Link to="/signup" className="auth-switch-link">
+            Create Account & Get 20% Off <span>↗</span>
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// 9. Sign Up Page
+export function SignUp() {
+  const { user, loginUser, setGoogleModal, say, branch } = useApp()
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [selectedBranch, setSelectedBranch] = useState(branch || 'cug')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [agreed, setAgreed] = useState(true)
+
+  if (user) {
+    return (
+      <div className="auth-already-in-card">
+        <div className="auth-user-badge">✓</div>
+        <h2>You already have an active session</h2>
+        <p>Signed in as <b>{user.name}</b> ({user.email})</p>
+        <div className="auth-redirect-actions">
+          <Link to="/account" className="btn-primary-pill">Go to Account</Link>
+          <Link to="/menu" className="btn-secondary-ghost">Browse Menu</Link>
+        </div>
+      </div>
+    )
+  }
+
+  const handleSignUp = (e) => {
+    e.preventDefault()
+    if (!name.trim()) return say('Please enter your full name')
+    if (!email.trim() || !email.includes('@')) return say('Please enter a valid email address')
+    if (!phone.trim() || phone.length < 9) return say('Please enter a valid 10-digit phone number')
+    if (!password || password.length < 4) return say('Please choose a password (at least 4 characters)')
+    if (!agreed) return say('Please agree to terms to register')
+
+    loginUser({
+      name: name.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      branch: selectedBranch,
+      googleAuth: false,
+      avatar: ''
+    })
+    say('Account created! Code WELCOME20 is ready to use.')
+    go('/account')
+  }
+
+  return (
+    <div className="auth-modern-screen">
+      <div className="auth-card-container">
+        {/* Header */}
+        <div className="auth-header-visual">
+          <div className="auth-brand-circle">
+            <img src="/lady3d-logo.jpg" alt="Lady 3D's" className="auth-brand-logo-img" />
+          </div>
+          <span className="auth-promo-pill">20% WELCOME VOUCHER</span>
+          <h1 className="auth-title">Create Account</h1>
+          <p className="auth-subtitle">Join the Lady 3D Food Club for campus delivery, loyalty points and free meals.</p>
+        </div>
+
+        {/* Google Sign Up Button */}
+        <div className="social-auth-section">
+          <button
+            type="button"
+            className="btn-google-auth"
+            onClick={() => setGoogleModal(true)}
+          >
+            <GoogleIcon />
+            <span>Sign up with Google</span>
+          </button>
+        </div>
+
+        <div className="auth-divider-line">
+          <span>or register with email</span>
+        </div>
+
+        <form onSubmit={handleSignUp} className="auth-form-fields">
+          <label className="input-field-wrap">
+            <span>Full Name</span>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="e.g. Ama Boateng"
+              required
+            />
+          </label>
+
+          <label className="input-field-wrap">
+            <span>Campus or Personal Email</span>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="e.g. ama.boateng@cug.edu.gh or gmail.com"
+              required
+            />
+          </label>
+
+          <label className="input-field-wrap">
+            <span>Phone Number (for SMS & WhatsApp delivery dispatch)</span>
+            <input
+              type="tel"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder="0241234567"
+              required
+            />
+          </label>
+
+          <label className="input-field-wrap">
+            <span>Primary Campus / Pickup Branch</span>
+            <select
+              value={selectedBranch}
+              onChange={e => setSelectedBranch(e.target.value)}
+              className="auth-select-branch"
+            >
+              {BRANCHES.map(b => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="input-field-wrap password-wrap">
+            <div className="password-header-row">
+              <span>Create Password</span>
+              <button
+                type="button"
+                className="btn-toggle-eye"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="At least 6 characters"
+              required
+            />
+          </label>
+
+          <label className="terms-checkbox-label">
+            <input
+              type="checkbox"
+              checked={agreed}
+              onChange={e => setAgreed(e.target.checked)}
+            />
+            <span>I agree to receive order status SMS updates & rewards info.</span>
+          </label>
+
+          <button type="submit" className="btn-auth-submit">
+            Create Account & Get 20% Off <span>→</span>
+          </button>
+        </form>
+
+        <div className="auth-switch-footer">
+          <p>Already have an account?</p>
+          <Link to="/login" className="auth-switch-link">
+            Sign In Here <span>↗</span>
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// 10. Modern Account / Profile Screen (Bon Appétit Screen 5)
+export function Account() {
+  const { user, logoutUser, orders, favs, menu, points, say } = useApp()
+  const [tab, setTab] = useState('orders')
+
+  if (!user) {
+    return <SignIn />
   }
 
   const mine = orders.filter(o => o.mine)
@@ -963,9 +1277,16 @@ export function Account() {
         <div className="profile-meta-info">
           <h2 className="profile-user-name">{user.name}</h2>
           <span className="profile-user-email">{user.email}</span>
-          <span className="profile-tag-badge">Lady 3D Food Club VIP</span>
+          <div className="profile-badges-row">
+            <span className="profile-tag-badge">Lady 3D Food Club VIP</span>
+            {user.googleAuth && (
+              <span className="profile-google-badge">
+                <GoogleIcon /> Google Verified
+              </span>
+            )}
+          </div>
         </div>
-        <button className="btn-logout" onClick={() => setUser(null)} title="Sign out">
+        <button className="btn-logout" onClick={logoutUser} title="Sign out">
           Sign out
         </button>
       </div>
@@ -977,7 +1298,11 @@ export function Account() {
             <span className="rewards-sublabel">LOYALTY BALANCE</span>
             <h3 className="rewards-points-count">{points} <span>Points</span></h3>
           </div>
-          <div className="rewards-icon-gold">🏆</div>
+          <div className="rewards-icon-gold">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
+              <path d="M19 5h-2V3a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v2H5a3 3 0 0 0-3 3v2a3 3 0 0 0 3 3h.14A8.006 8.006 0 0 0 11 19.93V22h2v-2.07A8.006 8.006 0 0 0 18.86 13H19a3 3 0 0 0 3-3V8a3 3 0 0 0-3-3zm-6-1v1h-2V4h2zM4 10V8a1 1 0 0 1 1-1h1v4H5a1 1 0 0 1-1-1zm16 0a1 1 0 0 1-1 1h-1V7h1a1 1 0 0 1 1 1v2z"/>
+            </svg>
+          </div>
         </div>
 
         <div className="rewards-progress-bar">
@@ -1096,25 +1421,33 @@ export function Account() {
   )
 }
 
-// 9. Community & Reviews Screen
+// 11. Campus & Community Page
 export function Community() {
   const { votes, setVotes, voted, setVoted, reviews, setReviews, say } = useApp()
-  const [r, setR] = useState({ who: '', stars: 5, text: '' })
+  const [r, setR] = useState({ who: '', role: 'CUG Student', stars: 5, text: '' })
   const tot = Object.values(votes).reduce((a, b) => a + b, 0)
 
   return (
     <div className="community-modern-page">
       <div className="community-header">
-        <span className="eyebrow-accent">CAMPUS & COMMUNITY</span>
-        <h1>Lady 3D’s Food Club</h1>
-        <p className="community-sub">Vote for weekly special dishes, read real reviews, and stay connected.</p>
+        <span className="eyebrow-accent">CAMPUS & SUNYANI COMMUNITY</span>
+        <h1>Campus Life & Catering Services</h1>
+        <p className="community-sub">
+          Weekly student dish voting, university catering reservations, campus delivery schedules, and verified diner reviews.
+        </p>
       </div>
 
       <div className="community-two-col">
-        {/* Student Choice Poll */}
+        {/* Weekly Student Choice Poll */}
         <div className="card-box-modern">
-          <h2>🗳️ Weekly Student Choice</h2>
-          <p className="card-box-sub">Vote for the special meal our chefs should cook next Tuesday!</p>
+          <div className="poll-header-badge">
+            <span className="badge-live-tag">Weekly Vote</span>
+            <span className="badge-votes-count">{tot} Votes Cast</span>
+          </div>
+          <h2>Weekly Student Choice Poll</h2>
+          <p className="card-box-sub">
+            Vote for next Tuesday’s campus lunch special. The winning dish is cooked fresh with extra portions at special student pricing at our Catholic University Annex.
+          </p>
           <div className="poll-options-list">
             {Object.entries(votes).map(([n, v]) => {
               const pct = Math.round((v / tot) * 100)
@@ -1126,7 +1459,7 @@ export function Community() {
                   onClick={() => {
                     setVotes({ ...votes, [n]: v + 1 })
                     setVoted(n)
-                    say('Your vote has been counted!')
+                    say('Your vote has been counted')
                   }}
                 >
                   <div className="poll-bar-fill" style={{ width: `${pct}%` }} />
@@ -1136,29 +1469,72 @@ export function Community() {
               )
             })}
           </div>
+          {voted && (
+            <p className="poll-thankyou-note">
+              Thank you! You voted for <b>{voted}</b>. Results are updated live and announced every Monday morning.
+            </p>
+          )}
         </div>
 
-        {/* WhatsApp & Direct Inquiries */}
-        <div className="card-box-modern">
-          <h2>💬 Catering & Group Orders</h2>
-          <p className="card-box-sub">Planning an event, campus seminar or birthday party?</p>
-          <div className="catering-contact-card">
-            <p>We provide full catering packages with warm chafing dishes, servers and custom menus.</p>
+        {/* Catering & Event Services */}
+        <div className="card-box-modern catering-spotlight-box">
+          <div className="catering-badge-pill">Official Campus Catering</div>
+          <h2>Catering & Event Packages</h2>
+          <p className="card-box-sub">
+            Full buffet setups, chafing dish service, and packed meal crates for university departments, student associations, matriculation dinners, and conferences.
+          </p>
+
+          <div className="catering-features-list">
+            <div className="catering-feature-item">
+              <b>Executive Buffet Service</b>
+              <span>Hot chafing dishes, servers, and tailored Ghanaian menus.</span>
+            </div>
+            <div className="catering-feature-item">
+              <b>Association & Hall Packs</b>
+              <span>Pre-boxed hot plates delivered in insulated crates to campus halls.</span>
+            </div>
+            <div className="catering-feature-item">
+              <b>Beverages & Refreshments</b>
+              <span>Chilled 500ml Sobolo jars, pastries, and natural juices.</span>
+            </div>
+          </div>
+
+          <div className="catering-contact-action-bar">
             <a
-              href="https://wa.me/233000000000?text=Hello%20Lady%203D's%20Catering%20Services,%20I'd%20like%20to%20inquire%20about%20catering"
+              href="https://wa.me/233000000000?text=Hello%20Lady%203D's%20Catering%20Services,%20I%20would%20like%20to%20inquire%20about%20catering%20for%20our%20campus%20event."
               target="_blank"
               rel="noreferrer"
               className="btn-whatsapp"
             >
-              Order via WhatsApp
+              Contact Catering via WhatsApp
             </a>
+            <span className="catering-hotline-note">Kitchen Office: <b>+233 24 123 4567</b></span>
+          </div>
+        </div>
+      </div>
+
+      {/* Campus Delivery Hubs Schedule */}
+      <div className="campus-schedule-card mt-3">
+        <h2>Campus Delivery Hubs & Hours</h2>
+        <div className="schedule-locations-grid">
+          <div className="schedule-location-item">
+            <span className="location-name">Catholic University of Ghana (Fiapre Annex)</span>
+            <span className="location-hours">Monday – Saturday: 10:30 AM – 6:30 PM</span>
+            <span className="location-coverage">Direct delivery to Hall 1, Hall 2, Hall 3, Annex, and Faculty Offices</span>
+          </div>
+          <div className="schedule-location-item">
+            <span className="location-name">Sunyani Main Kitchen</span>
+            <span className="location-hours">Monday – Sunday: 7:00 AM – 8:00 PM</span>
+            <span className="location-coverage">Counter pickup at Market Circle and delivery across Sunyani Township</span>
           </div>
         </div>
       </div>
 
       {/* Reviews Section */}
       <div className="reviews-section-card mt-3">
-        <h2>Customer Reviews & Feedback</h2>
+        <h2>Verified Customer Reviews</h2>
+        <p className="card-box-sub">Feedback from students, faculty, and catering clients.</p>
+
         <div className="reviews-list-grid">
           {reviews.filter(x => x.show).map(rev => (
             <div key={rev.id} className="review-quote-card">
@@ -1167,16 +1543,19 @@ export function Community() {
                 <span className="review-time">{rev.time || 'Recent'}</span>
               </div>
               <p className="review-text">“{rev.text}”</p>
-              <b className="review-author">— {rev.who}</b>
+              <div className="review-author-row">
+                <b className="review-author">{rev.who}</b>
+                <span className="review-verified-badge">Verified Customer</span>
+              </div>
             </div>
           ))}
         </div>
 
         <div className="review-form-box">
-          <h3>Leave a Review</h3>
+          <h3>Submit Your Review</h3>
           <div className="review-inputs-row">
             <input
-              placeholder="Your name or nickname"
+              placeholder="Your name and affiliation (e.g. CUG Student)"
               value={r.who}
               onChange={e => setR({ ...r, who: e.target.value })}
             />
@@ -1184,26 +1563,26 @@ export function Community() {
               value={r.stars}
               onChange={e => setR({ ...r, stars: +e.target.value })}
             >
-              <option value="5">★★★★★ (5 Stars)</option>
-              <option value="4">★★★★☆ (4 Stars)</option>
-              <option value="3">★★★☆☆ (3 Stars)</option>
+              <option value="5">5 Stars (Excellent)</option>
+              <option value="4">4 Stars (Good)</option>
+              <option value="3">3 Stars (Average)</option>
             </select>
           </div>
           <textarea
-            placeholder="How was your meal? Tell us about the taste, portion and service..."
+            placeholder="Share your experience with our food taste, portions, and service..."
             value={r.text}
             onChange={e => setR({ ...r, text: e.target.value })}
           />
           <button
             className="btn-primary-pill"
             onClick={() => {
-              if (!r.text) return say('Please type a brief review')
+              if (!r.text) return say('Please type your review first')
               setReviews([
                 ...reviews,
-                { id: Date.now(), who: r.who || 'Student Customer', stars: r.stars, text: r.text, show: true, time: 'Just now' }
+                { id: Date.now(), who: r.who || 'Campus Customer', stars: r.stars, text: r.text, show: true, time: 'Just now' }
               ])
-              setR({ who: '', stars: 5, text: '' })
-              say('Thanks for sharing your review! ✨')
+              setR({ who: '', role: 'CUG Student', stars: 5, text: '' })
+              say('Thank you for submitting your review.')
             }}
           >
             Submit Review
