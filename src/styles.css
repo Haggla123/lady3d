@@ -84,7 +84,6 @@ button, input, select, textarea {
   background: var(--bg-app);
   transition: all 0.3s ease;
   position: relative;
-  overflow-x: hidden;
 }
 
 .phone-device-wrapper {
@@ -98,7 +97,6 @@ button, input, select, textarea {
   position: relative;
   box-shadow: 0 0 35px rgba(0, 0, 0, 0.04);
   padding-bottom: calc(84px + env(safe-area-inset-bottom, 14px));
-  overflow-x: hidden;
 }
 
 @media (max-width: 768px) {
@@ -514,11 +512,11 @@ button, input, select, textarea {
   position: sticky;
   top: 0;
   z-index: 900;
-  background: rgba(251, 248, 244, 0.96);
+  background: rgba(251, 248, 244, 0.98);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid rgba(128, 20, 27, 0.08);
-  padding: max(26px, calc(env(safe-area-inset-top, 0px) + 16px)) 16px 12px;
+  padding: max(48px, calc(env(safe-area-inset-top, 0px) + 16px)) 16px 12px;
 }
 
 @media (max-width: 768px) {
