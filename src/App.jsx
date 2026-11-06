@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { go, money, useApp, useHash } from './store.jsx'
 import { Link, Wordmark, BranchPicker, BottomNavBar, FoodDetailModal, GoogleAuthModal } from './components/ui.jsx'
-import { Onboarding, Home, Menu, FoodPage, Cart, Checkout, Track, Account, Community, SignIn, SignUp } from './pages/Customer.jsx'
+import { Onboarding, Home, Menu, FoodPage, Cart, Checkout, OrderSuccess, Track, Account, Community, SignIn, SignUp } from './pages/Customer.jsx'
 import Admin from './pages/Admin.jsx'
 
 export default function App() {

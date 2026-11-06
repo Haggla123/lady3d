@@ -92,15 +92,53 @@ export function AppProvider({ children }) {
   const price = it => priceAt(it, branch || 'cug')
   const ok = it => !branch || it.avail[branch]
 
-  const add = (id, q = 1) => {
-    setCart(c => c.find(x => x.id === id) ? c.map(x => x.id === id ? { ...x, qty: x.qty + q } : x) : [...c, { id, qty: q }])
+  const add = (id, q = 1, selectedExtras = []) => {
+    const extrasKey = (selectedExtras || []).map(x => x.id || x).sort().join(',')
+    setCart(c => {
+      const match = c.find(x => x.id === id && (x.extras || []).map(e => e.id || e).sort().join(',') === extrasKey)
+      if (match) {
+        return c.map(x => x === match ? { ...x, qty: x.qty + q } : x)
+      }
+      return [
+        ...c,
+        {
+          lineId: `${id}-${extrasKey || 'plain'}-${Date.now()}`,
+          id,
+          qty: q,
+          extras: selectedExtras || []
+        }
+      ]
+    })
     say('Added to basket')
   }
 
-  const setQty = (id, q) => setCart(c => q < 1 ? c.filter(x => x.id !== id) : c.map(x => x.id === id ? { ...x, qty: q } : x))
+  const setQty = (lineIdentifier, q) => setCart(c =>
+    q < 1
+      ? c.filter(x => (x.lineId || x.id) !== lineIdentifier && x.id !== lineIdentifier)
+      : c.map(x => (x.lineId || x.id) === lineIdentifier || x.id === lineIdentifier ? { ...x, qty: q } : x)
+  )
 
-  const lines = cart.map(l => ({ ...l, it: menu.find(m => m.id === l.id) })).filter(l => l.it)
-  const subtotal = lines.reduce((s, l) => s + price(l.it) * l.qty, 0)
+  const lines = cart.map((l, idx) => {
+    const it = menu.find(m => m.id === l.id)
+    if (!it) return null
+    const extrasList = (l.extras || []).map(e => {
+      if (typeof e === 'object' && e.name) return e
+      return menu.find(m => m.id === e)
+    }).filter(Boolean)
+    const extrasTotal = extrasList.reduce((s, e) => s + (e.price || 0), 0)
+    const unitPrice = price(it) + extrasTotal
+    const lineTotal = unitPrice * l.qty
+    return {
+      ...l,
+      lineId: l.lineId || `${l.id}-${idx}`,
+      it,
+      extrasList,
+      unitPrice,
+      lineTotal
+    }
+  }).filter(Boolean)
+
+  const subtotal = lines.reduce((s, l) => s + l.lineTotal, 0)
   
   // Calculate promo discount
   const activePromo = promoCode && PROMO_CODES[promoCode.toUpperCase()]
@@ -145,12 +183,20 @@ export function AppProvider({ children }) {
     const ref = 'L3D-' + Math.random().toString(36).slice(2, 7).toUpperCase()
     const o = {
       ref,
-      items: lines.map(l => ({ id: l.id, name: l.it.name, qty: l.qty, price: price(l.it), img: l.it.img })),
+      items: lines.map(l => ({
+        id: l.id,
+        name: l.it.name,
+        qty: l.qty,
+        unitPrice: l.unitPrice,
+        price: l.unitPrice,
+        img: l.it.img,
+        extras: (l.extrasList || []).map(e => ({ name: e.name, price: e.price }))
+      })),
       subtotal,
       discount,
       deliveryFee,
       total,
-      branch,
+      branch: branch || 'cug',
       orderType,
       ...f,
       paid: false,

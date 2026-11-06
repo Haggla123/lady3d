@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { money, useApp } from '../store.jsx'
-import { BRANCHES } from '../data.js'
+import { BRANCHES, EXTRAS } from '../data.js'
 
 export const Link = ({ to, children, className = '', ...p }) => (
   <a href={'#' + to} className={className} {...p}>{children}</a>
@@ -203,13 +203,27 @@ export const Stars = ({ n = 5 }) => (
 )
 
 export function FoodDetailModal({ item, onClose }) {
-  const { price, ok, add, branch, favs, toggleFav } = useApp()
+  const { price, ok, add, branch, setBranch, say, favs, toggleFav } = useApp()
   const [qty, setQty] = useState(1)
+  const [selectedExtras, setSelectedExtras] = useState([])
   if (!item) return null
 
   const isFav = favs.includes(item.id)
   const isAvail = ok(item)
-  const itemPrice = price(item)
+  const basePrice = price(item)
+  const extrasTotal = selectedExtras.reduce((sum, e) => sum + (e.price || 0), 0)
+  const totalUnitPrice = basePrice + extrasTotal
+  const otherBranch = item.avail?.['sunyani'] ? 'sunyani' : 'cug'
+  const otherBranchName = BRANCHES.find(b => b.id === otherBranch)?.name || 'Other Branch'
+  const otherBranchShort = BRANCHES.find(b => b.id === otherBranch)?.short || 'Other'
+
+  const toggleExtra = (extra) => {
+    if (selectedExtras.some(e => e.id === extra.id)) {
+      setSelectedExtras(selectedExtras.filter(e => e.id !== extra.id))
+    } else {
+      setSelectedExtras([...selectedExtras, extra])
+    }
+  }
 
   return (
     <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
@@ -250,8 +264,58 @@ export function FoodDetailModal({ item, onClose }) {
           <p className="modal-full-desc">{item.desc}</p>
 
           {!isAvail && (
-            <div className="modal-alert-box">
-              Notice: Currently not available at this branch today. Switch branch to order.
+            <div className="modal-alert-box branch-switch-card">
+              <div className="alert-text-block">
+                <b>Sold exclusively at {otherBranchName}</b>
+                <p>
+                  {otherBranch === 'sunyani'
+                    ? 'This authentic dish is featured on our Main Branch Signboard (Market Circle).'
+                    : 'This meal is prepared fresh on campus (from our Campus Flyer).'}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-switch-branch-pill"
+                onClick={() => {
+                  setBranch(otherBranch)
+                  say(`Switched to ${otherBranchName}`)
+                }}
+              >
+                Switch to {otherBranchShort} to Order →
+              </button>
+            </div>
+          )}
+
+          {/* Add Extras Section */}
+          {!item.isExtra && EXTRAS && EXTRAS.length > 0 && (
+            <div className="modal-extras-section">
+              <div className="extras-section-header">
+                <div>
+                  <h3 className="extras-section-title">Add Extras & Sides</h3>
+                  <p className="extras-section-sub">Customize your meal with extra protein, soups, or sides</p>
+                </div>
+                {selectedExtras.length > 0 && (
+                  <span className="extras-count-badge">+{selectedExtras.length} selected</span>
+                )}
+              </div>
+
+              <div className="extras-grid-selector">
+                {EXTRAS.map(extra => {
+                  const isChecked = selectedExtras.some(e => e.id === extra.id)
+                  return (
+                    <button
+                      key={extra.id}
+                      type="button"
+                      className={`extra-option-btn ${isChecked ? 'active' : ''}`}
+                      onClick={() => toggleExtra(extra)}
+                    >
+                      <span className="extra-check-box">{isChecked ? '✓' : '+'}</span>
+                      <span className="extra-option-name">{extra.name}</span>
+                      <b className="extra-option-price">+{money(extra.price)}</b>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           )}
 
@@ -266,12 +330,12 @@ export function FoodDetailModal({ item, onClose }) {
               className="btn-modal-add"
               disabled={!isAvail}
               onClick={() => {
-                add(item.id, qty)
+                add(item.id, qty, selectedExtras)
                 onClose()
               }}
             >
               <span>Add to Basket</span>
-              <b>{money(itemPrice * qty)}</b>
+              <b>{money(totalUnitPrice * qty)}</b>
             </button>
           </div>
         </div>

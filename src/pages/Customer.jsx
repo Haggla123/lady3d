@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { go, money, useApp } from '../store.jsx'
 import { Link, Food, DishCard, BranchPicker, Stars, GoogleIcon, CategoryIcon } from '../components/ui.jsx'
-import { STATUSES, BRANCHES, CATEGORIES_WITH_ICONS, PROMO_CODES } from '../data.js'
+import { STATUSES, BRANCHES, CATEGORIES_WITH_ICONS, PROMO_CODES, EXTRAS } from '../data.js'
 
 // 1. Onboarding / Get Started Sequence (SnapEats Screen 1)
 export function Onboarding({ onStart, onSignIn, onSignUp }) {
@@ -86,21 +86,24 @@ export function Onboarding({ onStart, onSignIn, onSignUp }) {
 
 // 2. Modern Home Page (SnapEats Screen 2 + Arby's + Bon Appétit)
 export function Home() {
-  const { menu, branch, setBranch, orderType, setOrderType, applyPromo, setActiveFood, promos, user } = useApp()
+  const { menu, branch, setBranch, orderType, setOrderType, applyPromo, setActiveFood, add, promos, user } = useApp()
   const [activeCat, setActiveCat] = useState('All')
   const [searchVal, setSearchVal] = useState('')
 
   const activeBranch = BRANCHES.find(b => b.id === branch) || BRANCHES[0]
+  const otherBranch = BRANCHES.find(b => b.id !== (branch || 'cug')) || BRANCHES[1]
 
-  // Filter menu
-  const filteredDishes = menu.filter(m => {
+  // Filter dishes strictly for current active branch
+  const currentBranchDishes = menu.filter(m => !m.isExtra && (!branch || m.avail[branch]))
+  const filteredDishes = currentBranchDishes.filter(m => {
     const matchCat = activeCat === 'All' || m.cat === activeCat
-    const matchSearch = m.name.toLowerCase().includes(searchVal.toLowerCase()) || m.desc.toLowerCase().includes(searchVal.toLowerCase())
+    const matchSearch = !searchVal || m.name.toLowerCase().includes(searchVal.toLowerCase()) || m.desc.toLowerCase().includes(searchVal.toLowerCase())
     return matchCat && matchSearch
   })
 
-  const popularPicks = menu.slice(0, 4)
-  const mealOfTheDay = menu.find(m => m.tag === 'Meal of the Day') || menu[1]
+  const popularPicks = currentBranchDishes.slice(0, 4)
+  const mealOfTheDay = currentBranchDishes.find(m => m.tag === 'Meal of the Day') || currentBranchDishes[0] || menu[1]
+  const displayDishes = (searchVal || activeCat !== 'All') ? filteredDishes : popularPicks
 
   return (
     <div className="home-modern-view">
@@ -240,9 +243,53 @@ export function Home() {
           <Link to="/menu" className="view-all-link">View All →</Link>
         </div>
 
-        <div className="dishes-grid-cards">
-          {(searchVal ? filteredDishes : popularPicks).map(dish => (
-            <DishCard key={dish.id} it={dish} />
+        {displayDishes.length > 0 ? (
+          <div className="dishes-grid-cards">
+            {displayDishes.map(dish => (
+              <DishCard key={dish.id} it={dish} />
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state-card py-4">
+            <p>No dishes found for this category at {activeBranch.short}.</p>
+            <button className="btn-reset-filters" onClick={() => { setActiveCat('All'); setSearchVal(''); }}>
+              Show All {activeBranch.short} Meals
+            </button>
+          </div>
+        )}
+      </section>
+
+      {/* Official Extras Strip */}
+      <section className="home-extras-strip-section">
+        <div className="section-title-row">
+          <div>
+            <span className="eyebrow-accent">DELICIOUS ADD-ONS</span>
+            <h2 className="section-main-heading">Extras & Sides</h2>
+            <p className="section-subtext">Add extra portions of chicken, cow feet, towel, soups, or banku.</p>
+          </div>
+        </div>
+        <div className="extras-cards-scroll">
+          {EXTRAS.map(ex => (
+            <div key={ex.id} className="extra-scroll-card" onClick={() => setActiveFood(ex)}>
+              <div className="extra-card-thumb">
+                <Food item={ex} className="extra-photo" />
+              </div>
+              <div className="extra-card-info">
+                <h4 className="extra-card-name">{ex.name}</h4>
+                <b className="extra-card-price">{money(ex.price)}</b>
+              </div>
+              <button
+                type="button"
+                className="btn-add-extra-plus"
+                aria-label={`Add ${ex.name}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  add(ex.id, 1)
+                }}
+              >
+                +
+              </button>
+            </div>
           ))}
         </div>
       </section>
@@ -290,15 +337,15 @@ export function Menu() {
   const init = new URLSearchParams((location.hash.split('?')[1]) || '').get('cat') || 'All'
   const [cat, setCat] = useState(init)
   const [q, setQ] = useState('')
-  const [onlyAvail, setOnlyAvail] = useState(false)
   const [maxPrice, setMaxPrice] = useState(100)
 
+  // Strictly filter by current selected branch!
   const list = menu.filter(m => {
+    const matchBranch = !branch || ok(m)
     const matchCat = cat === 'All' || m.cat === cat
-    const matchSearch = m.name.toLowerCase().includes(q.toLowerCase()) || m.desc.toLowerCase().includes(q.toLowerCase())
-    const matchAvail = !onlyAvail || ok(m)
+    const matchSearch = !q || m.name.toLowerCase().includes(q.toLowerCase()) || m.desc.toLowerCase().includes(q.toLowerCase())
     const matchPrice = m.price <= maxPrice
-    return matchCat && matchSearch && matchAvail && matchPrice
+    return matchBranch && matchCat && matchSearch && matchPrice
   })
 
   return (
@@ -326,14 +373,10 @@ export function Menu() {
         </div>
 
         <div className="menu-filter-controls">
-          <label className="toggle-checkbox-label">
-            <input
-              type="checkbox"
-              checked={onlyAvail}
-              onChange={e => setOnlyAvail(e.target.checked)}
-            />
-            <span>Available at this branch</span>
-          </label>
+          <div className="menu-branch-indicator-tag">
+            <span className="branch-dot-live" />
+            <span>Serving at <b>{BRANCHES.find(b => b.id === (branch || 'cug'))?.name}</b></span>
+          </div>
           <div className="price-slider-group">
             <span className="slider-label">Max: {money(maxPrice)}</span>
             <input
@@ -370,7 +413,7 @@ export function Menu() {
         <div className="empty-state-card">
           <h3>No dishes found</h3>
           <p>Try resetting the category filter or searching for another dish.</p>
-          <button className="btn-reset-filters" onClick={() => { setCat('All'); setQ(''); setMaxPrice(100); setOnlyAvail(false) }}>
+          <button className="btn-reset-filters" onClick={() => { setCat('All'); setQ(''); setMaxPrice(100); }}>
             Reset Filters
           </button>
         </div>
@@ -381,9 +424,10 @@ export function Menu() {
 
 // 4. Food Detail Page
 export function FoodPage({ id }) {
-  const { menu, price, ok, add, branch, favs, toggleFav } = useApp()
+  const { menu, price, ok, add, branch, setBranch, say, favs, toggleFav } = useApp()
   const it = menu.find(m => m.id === +id)
   const [qty, setQty] = useState(1)
+  const [selectedExtras, setSelectedExtras] = useState([])
 
   if (!it) {
     return (
@@ -396,7 +440,20 @@ export function FoodPage({ id }) {
 
   const isAvail = ok(it)
   const isFav = favs.includes(it.id)
-  const itemPrice = price(it)
+  const basePrice = price(it)
+  const extrasTotal = selectedExtras.reduce((sum, e) => sum + (e.price || 0), 0)
+  const totalUnitPrice = basePrice + extrasTotal
+  const otherBranch = it.avail?.['sunyani'] ? 'sunyani' : 'cug'
+  const otherBranchName = BRANCHES.find(b => b.id === otherBranch)?.name || 'Other Branch'
+  const otherBranchShort = BRANCHES.find(b => b.id === otherBranch)?.short || 'Other'
+
+  const toggleExtra = (extra) => {
+    if (selectedExtras.some(e => e.id === extra.id)) {
+      setSelectedExtras(selectedExtras.filter(e => e.id !== extra.id))
+    } else {
+      setSelectedExtras([...selectedExtras, extra])
+    }
+  }
 
   return (
     <div className="food-detail-fullpage">
@@ -422,7 +479,7 @@ export function FoodPage({ id }) {
           </div>
 
           <h1 className="detail-meal-title">{it.name}</h1>
-          <p className="detail-meal-price">{money(itemPrice)}</p>
+          <p className="detail-meal-price">{money(basePrice)}</p>
           <p className="detail-desc-text">{it.desc}</p>
 
           <div className="detail-specs-box">
@@ -447,8 +504,58 @@ export function FoodPage({ id }) {
           </div>
 
           {!isAvail && (
-            <div className="modal-alert-box">
-              Notice: Currently not available at this branch. Please choose another meal or switch branch.
+            <div className="modal-alert-box branch-switch-card">
+              <div className="alert-text-block">
+                <b>Sold exclusively at {otherBranchName}</b>
+                <p>
+                  {otherBranch === 'sunyani'
+                    ? 'This authentic dish is featured on our Main Branch Signboard (Market Circle).'
+                    : 'This meal is prepared fresh on campus (from our Campus Flyer).'}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-switch-branch-pill"
+                onClick={() => {
+                  setBranch(otherBranch)
+                  say(`Switched to ${otherBranchName}`)
+                }}
+              >
+                Switch to {otherBranchShort} to Order →
+              </button>
+            </div>
+          )}
+
+          {/* Add Extras Section */}
+          {!it.isExtra && EXTRAS && EXTRAS.length > 0 && (
+            <div className="modal-extras-section">
+              <div className="extras-section-header">
+                <div>
+                  <h3 className="extras-section-title">Add Extras & Sides</h3>
+                  <p className="extras-section-sub">Customize your meal with extra protein, soups, or sides</p>
+                </div>
+                {selectedExtras.length > 0 && (
+                  <span className="extras-count-badge">+{selectedExtras.length} selected</span>
+                )}
+              </div>
+
+              <div className="extras-grid-selector">
+                {EXTRAS.map(extra => {
+                  const isChecked = selectedExtras.some(e => e.id === extra.id)
+                  return (
+                    <button
+                      key={extra.id}
+                      type="button"
+                      className={`extra-option-btn ${isChecked ? 'active' : ''}`}
+                      onClick={() => toggleExtra(extra)}
+                    >
+                      <span className="extra-check-box">{isChecked ? '✓' : '+'}</span>
+                      <span className="extra-option-name">{extra.name}</span>
+                      <b className="extra-option-price">+{money(extra.price)}</b>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           )}
 
@@ -462,10 +569,10 @@ export function FoodPage({ id }) {
             <button
               className="btn-modal-add grow"
               disabled={!isAvail}
-              onClick={() => add(it.id, qty)}
+              onClick={() => add(it.id, qty, selectedExtras)}
             >
               <span>Add to Basket</span>
-              <b>{money(itemPrice * qty)}</b>
+              <b>{money(totalUnitPrice * qty)}</b>
             </button>
           </div>
         </div>
@@ -526,31 +633,39 @@ export function Cart() {
       <div className="cart-items-list">
         {lines.map(line => {
           const isLineAvail = ok(line.it)
+          const lineId = line.lineId || line.id
           return (
-            <div key={line.id} className={`cart-item-card ${isLineAvail ? '' : 'line-warn'}`}>
+            <div key={lineId} className={`cart-item-card ${isLineAvail ? '' : 'line-warn'}`}>
               <div className="cart-item-photo">
                 <Food item={line.it} />
               </div>
 
               <div className="cart-item-info">
                 <h3 className="cart-item-name">{line.it.name}</h3>
-                <span className="cart-item-unit-price">{money(price(line.it))} each</span>
+                {line.extrasList && line.extrasList.length > 0 && (
+                  <div className="cart-item-extras-list">
+                    {line.extrasList.map((ex, i) => (
+                      <span key={i} className="cart-extra-pill">+ {ex.name}</span>
+                    ))}
+                  </div>
+                )}
+                <span className="cart-item-unit-price">{money(line.unitPrice || price(line.it))} each</span>
                 {!isLineAvail && (
                   <span className="cart-item-warn-tag">Notice: Unavailable at selected branch</span>
                 )}
               </div>
 
               <div className="cart-item-stepper">
-                <button onClick={() => setQty(line.id, line.qty - 1)} aria-label="Decrease">−</button>
+                <button onClick={() => setQty(lineId, line.qty - 1)} aria-label="Decrease">−</button>
                 <span>{line.qty}</span>
-                <button onClick={() => setQty(line.id, line.qty + 1)} aria-label="Increase">+</button>
+                <button onClick={() => setQty(lineId, line.qty + 1)} aria-label="Increase">+</button>
               </div>
 
               <div className="cart-item-price-col">
-                <strong className="cart-line-total">{money(price(line.it) * line.qty)}</strong>
+                <strong className="cart-line-total">{money(line.lineTotal || (price(line.it) * line.qty))}</strong>
                 <button
                   className="cart-item-trash"
-                  onClick={() => setQty(line.id, 0)}
+                  onClick={() => setQty(lineId, 0)}
                   aria-label="Remove item"
                 >
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -659,7 +774,7 @@ export function Checkout() {
   const submit = () => {
     if (bad.length) return setStep(1)
     const ref = place(f)
-    go('/track/' + ref)
+    go('/success/' + ref)
   }
 
   return (
@@ -831,6 +946,170 @@ export function Checkout() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// 6b. Order Success Confirmation Screen
+export function OrderSuccess({ refId }) {
+  const { orders } = useApp()
+  const currentRef = (refId || '').toUpperCase()
+  const order = orders.find(x => x.ref === currentRef) || orders[0]
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    if (order?.ref) {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(order.ref)
+      }
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  const branchObj = BRANCHES.find(b => b.id === order?.branch) || BRANCHES[0]
+
+  return (
+    <div className="order-success-screen">
+      <div className="success-card-main">
+        {/* Animated Celebration Icon */}
+        <div className="success-icon-badge-wrap">
+          <div className="success-icon-circle">
+            <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+          <div className="success-pulse-ring" />
+        </div>
+
+        <span className="success-eyebrow">ORDER CONFIRMED</span>
+        <h1 className="success-title">Order Placed Successfully!</h1>
+        <p className="success-subtitle">
+          Thank you, <b>{order?.name || 'Customer'}</b>! Your meal is being freshly prepared with love by Lady 3D’s kitchen.
+        </p>
+
+        {/* Reference Code Box */}
+        <div className="success-order-ref-box">
+          <div className="ref-code-info">
+            <span className="ref-label">Order Reference Code</span>
+            <strong className="ref-number">{order?.ref || currentRef}</strong>
+          </div>
+          <button type="button" className="btn-copy-code" onClick={handleCopy}>
+            {copied ? '✓ Copied' : 'Copy Code'}
+          </button>
+        </div>
+
+        {/* Estimated Time & Branch */}
+        <div className="success-meta-grid">
+          <div className="success-meta-item">
+            <span className="meta-icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
+              </svg>
+            </span>
+            <div>
+              <span className="meta-title">Estimated Time</span>
+              <b className="meta-value">15 – 25 Minutes</b>
+            </div>
+          </div>
+
+          <div className="success-meta-item">
+            <span className="meta-icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z"/>
+              </svg>
+            </span>
+            <div>
+              <span className="meta-title">{order?.orderType === 'delivery' ? 'Campus Delivery' : 'Counter Pickup'}</span>
+              <b className="meta-value">{branchObj?.name}</b>
+            </div>
+          </div>
+        </div>
+
+        {/* Order Items Breakdown */}
+        {order && order.items && (
+          <div className="success-items-summary">
+            <h3 className="summary-title">Ordered Items ({order.items.reduce((s, x) => s + x.qty, 0)})</h3>
+            <div className="summary-items-list">
+              {order.items.map((item, idx) => (
+                <div key={idx} className="summary-item-row">
+                  <div className="summary-item-left">
+                    <span className="summary-item-qty">{item.qty}×</span>
+                    <div>
+                      <b className="summary-item-name">{item.name}</b>
+                      {item.extras && item.extras.length > 0 && (
+                        <div className="summary-extras-line">
+                          {item.extras.map((ex, ei) => (
+                            <span key={ei} className="summary-extra-tag">+ {ex.name}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <strong className="summary-item-total">{money((item.price || item.unitPrice || 0) * item.qty)}</strong>
+                </div>
+              ))}
+            </div>
+
+            <div className="summary-pricing-footer">
+              <div className="pricing-row">
+                <span>Subtotal</span>
+                <span>{money(order.subtotal || order.total)}</span>
+              </div>
+              {order.discount > 0 && (
+                <div className="pricing-row discount-row">
+                  <span>Voucher Discount</span>
+                  <span>−{money(order.discount)}</span>
+                </div>
+              )}
+              {order.deliveryFee > 0 && (
+                <div className="pricing-row">
+                  <span>Delivery Fee</span>
+                  <span>{money(order.deliveryFee)}</span>
+                </div>
+              )}
+              <div className="pricing-row grand-total-row">
+                <b>Total Amount</b>
+                <b className="grand-total-amount">{money(order.total)}</b>
+              </div>
+              <div className="payment-status-pill">
+                Payment: {order.paid ? '✓ Paid' : order.pay === 'momo' ? 'Mobile Money (Prompt sent on dispatch)' : 'Pay on Collection / Delivery'}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="success-action-buttons">
+          <button
+            type="button"
+            className="btn-track-live"
+            onClick={() => go('/track/' + (order?.ref || currentRef))}
+          >
+            Track Order Live →
+          </button>
+          <button
+            type="button"
+            className="btn-back-home"
+            onClick={() => go('/')}
+          >
+            Back to Home
+          </button>
+        </div>
+
+        {/* WhatsApp Support Link */}
+        <div className="success-help-note">
+          <span>Need help or special instructions?</span>
+          <a
+            href={`https://wa.me/233531299243?text=Hello%20Lady%203D's,%20I%20just%20placed%20order%20${order?.ref || currentRef}.`}
+            target="_blank"
+            rel="noreferrer"
+            className="whatsapp-support-link"
+          >
+            Chat with Lady 3D’s on WhatsApp (053 129 9243)
+          </a>
+        </div>
       </div>
     </div>
   )
@@ -1423,7 +1702,7 @@ export function Account() {
 
 // 11. Campus & Community Page
 export function Community() {
-  const { votes, setVotes, voted, setVoted, reviews, setReviews, say } = useApp()
+  const { votes, setVotes, voted, setVoted, reviews, setReviews, branch, setBranch, say } = useApp()
   const [r, setR] = useState({ who: '', role: 'CUG Student', stars: 5, text: '' })
   const tot = Object.values(votes).reduce((a, b) => a + b, 0)
 
@@ -1433,9 +1712,128 @@ export function Community() {
         <span className="eyebrow-accent">CAMPUS & SUNYANI COMMUNITY</span>
         <h1>Campus Life & Catering Services</h1>
         <p className="community-sub">
-          Weekly student dish voting, university catering reservations, campus delivery schedules, and verified diner reviews.
+          Weekly student dish voting, official branch menus from our flyer & signboard, university catering reservations, and verified diner reviews.
         </p>
       </div>
+
+      {/* Official Branches & Menu Showcase */}
+      <section className="branches-showcase-section">
+        <div className="section-title-row">
+          <div>
+            <span className="eyebrow-accent">OUR TWO OFFICIAL LOCATIONS</span>
+            <h2 className="section-main-heading">Campus Annex & Main Kitchen</h2>
+            <p className="section-subtext">
+              Authentic food selections and photos as displayed on our official Campus Flyer and Main Branch Signboard.
+            </p>
+          </div>
+        </div>
+
+        <div className="branches-cards-grid">
+          {/* Card 1: Campus Flyer (Fiapre Annex) */}
+          <div className="branch-visual-card">
+            <div className="branch-flyer-thumb-frame">
+              <img
+                src="/campus-branch-flyer.jpg"
+                alt="Lady 3D's Catholic University Campus Flyer"
+                className="branch-flyer-img"
+              />
+              <span className="branch-photo-tag">Photo 2: Official Campus Flyer</span>
+            </div>
+            <div className="branch-card-body">
+              <div className="branch-meta-badge">Catholic University of Ghana (Fiapre Annex)</div>
+              <h3 className="branch-card-title">Campus Branch (The Flyer)</h3>
+              <p className="branch-card-slogan">“DELICIOUS MEALS, MADE WITH LOVE”</p>
+              <div className="branch-items-pill-group">
+                <span className="dish-bubble">Waakye on Plantain Leaf</span>
+                <span className="dish-bubble">Jollof & Grilled Chicken</span>
+                <span className="dish-bubble">Fried Rice & Fried Tilapia</span>
+                <span className="dish-bubble">Banku with Towel</span>
+                <span className="dish-bubble">Cow Feet Soup</span>
+                <span className="dish-bubble">Plain Rice & Stew</span>
+              </div>
+              <div className="branch-contact-info-list">
+                <div className="branch-contact-row">
+                  <span className="contact-label">Location:</span>
+                  <span className="contact-val">Fiapre Campus, Catholic University of Ghana</span>
+                </div>
+                <div className="branch-contact-row">
+                  <span className="contact-label">Order Phone:</span>
+                  <a href="tel:0276913089" className="contact-val link-val">027 691 3089</a>
+                </div>
+                <div className="branch-contact-row">
+                  <span className="contact-label">WhatsApp:</span>
+                  <a href="https://wa.me/233531299243" target="_blank" rel="noreferrer" className="contact-val link-val">053 129 9243</a>
+                </div>
+              </div>
+              <div className="branch-action-buttons">
+                <button
+                  type="button"
+                  className="btn-branch-order-now"
+                  onClick={() => {
+                    setBranch('cug')
+                    say('Switched to Catholic University Campus')
+                    go('/menu')
+                  }}
+                >
+                  Order Campus Menu →
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: Main Branch Signboard (Sunyani Main) */}
+          <div className="branch-visual-card">
+            <div className="branch-flyer-thumb-frame">
+              <img
+                src="/main-branch-signboard.jpg"
+                alt="Lady 3D's Sunyani Main Branch Signboard"
+                className="branch-flyer-img signboard-aspect"
+              />
+              <span className="branch-photo-tag">Photo 1: Main Branch Signboard</span>
+            </div>
+            <div className="branch-card-body">
+              <div className="branch-meta-badge">Market Circle, Sunyani Main</div>
+              <h3 className="branch-card-title">Main Branch (The Signboard)</h3>
+              <p className="branch-card-slogan">“WE SERVE ALL KINDS OF LOCAL & CONTINENTAL DISHES”</p>
+              <div className="branch-items-pill-group">
+                <span className="dish-bubble highlight">Yam & Plantain Ampesi</span>
+                <span className="dish-bubble highlight">Kontomire Palava Sauce</span>
+                <span className="dish-bubble highlight">Garden Egg Stew & Fish</span>
+                <span className="dish-bubble highlight">Banku & Grilled Tilapia</span>
+                <span className="dish-bubble highlight">Fufu & Goat Light Soup</span>
+                <span className="dish-bubble highlight">Kokonte with Groundnut Soup</span>
+              </div>
+              <div className="branch-contact-info-list">
+                <div className="branch-contact-row">
+                  <span className="contact-label">Location:</span>
+                  <span className="contact-val">Market Circle / Main Road, Sunyani</span>
+                </div>
+                <div className="branch-contact-row">
+                  <span className="contact-label">Order Phone:</span>
+                  <a href="tel:0276913089" className="contact-val link-val">027 691 3089</a>
+                </div>
+                <div className="branch-contact-row">
+                  <span className="contact-label">Book Events:</span>
+                  <a href="tel:0244650474" className="contact-val link-val highlight-tel">024 465 0474</a>
+                </div>
+              </div>
+              <div className="branch-action-buttons">
+                <button
+                  type="button"
+                  className="btn-branch-order-now main-branch-theme"
+                  onClick={() => {
+                    setBranch('sunyani')
+                    say('Switched to Sunyani Main Branch')
+                    go('/menu')
+                  }}
+                >
+                  Order Main Branch Menu →
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <div className="community-two-col">
         {/* Weekly Student Choice Poll */}
@@ -1501,14 +1899,16 @@ export function Community() {
 
           <div className="catering-contact-action-bar">
             <a
-              href="https://wa.me/233000000000?text=Hello%20Lady%203D's%20Catering%20Services,%20I%20would%20like%20to%20inquire%20about%20catering%20for%20our%20campus%20event."
+              href="https://wa.me/233531299243?text=Hello%20Lady%203D's%20Catering%20Services,%20I%20would%20like%20to%20inquire%20about%20catering%20for%20our%20event."
               target="_blank"
               rel="noreferrer"
               className="btn-whatsapp"
             >
               Contact Catering via WhatsApp
             </a>
-            <span className="catering-hotline-note">Kitchen Office: <b>+233 24 123 4567</b></span>
+            <span className="catering-hotline-note">
+              Kitchen Hotline: <b>027 691 3089</b> / <b>053 129 9243</b> • Book Events: <b>024 465 0474</b>
+            </span>
           </div>
         </div>
       </div>
