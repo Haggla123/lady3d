@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { money, useApp } from '../store.jsx'
 import { BRANCHES, EXTRAS } from '../data.js'
 
@@ -206,6 +206,15 @@ export function FoodDetailModal({ item, onClose }) {
   const { price, ok, add, branch, setBranch, say, favs, toggleFav } = useApp()
   const [qty, setQty] = useState(1)
   const [selectedExtras, setSelectedExtras] = useState([])
+
+  useEffect(() => {
+    const original = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = original
+    }
+  }, [])
+
   if (!item) return null
 
   const isFav = favs.includes(item.id)
@@ -228,116 +237,163 @@ export function FoodDetailModal({ item, onClose }) {
   return (
     <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
       <div className="modal-sheet" onClick={e => e.stopPropagation()}>
-        <div className="modal-sheet-handle" />
-        <button className="modal-close-btn" onClick={onClose} aria-label="Close details">✕</button>
-
-        <div className="modal-hero-photo">
-          <Food item={item} className="modal-photo-img" />
-          <button
-            type="button"
-            className={`modal-fav-btn ${isFav ? 'active' : ''}`}
-            onClick={() => toggleFav(item.id)}
-            aria-label="Save to favorites"
-          >
-            ♥
-          </button>
+        {/* Handle bar on top */}
+        <div className="modal-sheet-handle-bar">
+          <div className="modal-sheet-handle" />
         </div>
 
-        <div className="modal-body-content">
-          <div className="modal-header-row">
-            <div>
-              <span className="modal-cat-pill">{item.cat}</span>
-              <h2 className="modal-food-title">{item.name}</h2>
-            </div>
-            <div className="modal-rating-badge">
-              <span>★ {item.rating || 4.9}</span>
-              <small>({item.reviews || 85} reviews)</small>
-            </div>
-          </div>
+        {/* Floating close button */}
+        <button className="modal-close-btn" onClick={onClose} aria-label="Close details">
+          ✕
+        </button>
 
-          <div className="modal-specs-row">
-            <span className="spec-item">Prep: {item.prepTime || '15 min'}</span>
-            <span className="spec-item">Made fresh daily</span>
-            <span className="spec-item">{BRANCHES.find(b => b.id === branch)?.short || 'Campus'}</span>
-          </div>
-
-          <p className="modal-full-desc">{item.desc}</p>
-
-          {!isAvail && (
-            <div className="modal-alert-box branch-switch-card">
-              <div className="alert-text-block">
-                <b>Sold exclusively at {otherBranchName}</b>
-                <p>
-                  {otherBranch === 'sunyani'
-                    ? 'This authentic dish is featured on our Main Branch Signboard (Market Circle).'
-                    : 'This meal is prepared fresh on campus (from our Campus Flyer).'}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn-switch-branch-pill"
-                onClick={() => {
-                  setBranch(otherBranch)
-                  say(`Switched to ${otherBranchName}`)
-                }}
-              >
-                Switch to {otherBranchShort} to Order →
-              </button>
-            </div>
-          )}
-
-          {/* Add Extras Section */}
-          {!item.isExtra && EXTRAS && EXTRAS.length > 0 && (
-            <div className="modal-extras-section">
-              <div className="extras-section-header">
-                <div>
-                  <h3 className="extras-section-title">Add Extras & Sides</h3>
-                  <p className="extras-section-sub">Customize your meal with extra protein, soups, or sides</p>
-                </div>
-                {selectedExtras.length > 0 && (
-                  <span className="extras-count-badge">+{selectedExtras.length} selected</span>
-                )}
-              </div>
-
-              <div className="extras-grid-selector">
-                {EXTRAS.map(extra => {
-                  const isChecked = selectedExtras.some(e => e.id === extra.id)
-                  return (
-                    <button
-                      key={extra.id}
-                      type="button"
-                      className={`extra-option-btn ${isChecked ? 'active' : ''}`}
-                      onClick={() => toggleExtra(extra)}
-                    >
-                      <span className="extra-check-box">{isChecked ? '✓' : '+'}</span>
-                      <span className="extra-option-name">{extra.name}</span>
-                      <b className="extra-option-price">+{money(extra.price)}</b>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          <div className="modal-bottom-actions">
-            <div className="modal-stepper">
-              <button onClick={() => setQty(Math.max(1, qty - 1))} aria-label="Decrease quantity">−</button>
-              <span className="stepper-count">{qty}</span>
-              <button onClick={() => setQty(qty + 1)} aria-label="Increase quantity">+</button>
-            </div>
-
+        {/* Scrollable Modal Content */}
+        <div className="modal-scroll-body">
+          <div className="modal-hero-photo">
+            <Food item={item} className="modal-photo-img" />
             <button
-              className="btn-modal-add"
-              disabled={!isAvail}
-              onClick={() => {
-                add(item.id, qty, selectedExtras)
-                onClose()
-              }}
+              type="button"
+              className={`modal-fav-btn ${isFav ? 'active' : ''}`}
+              onClick={() => toggleFav(item.id)}
+              aria-label="Save to favorites"
             >
-              <span>Add to Basket</span>
-              <b>{money(totalUnitPrice * qty)}</b>
+              ♥
+            </button>
+            <div className="modal-photo-gradient-overlay" />
+          </div>
+
+          <div className="modal-body-content">
+            <div className="modal-header-row">
+              <div className="modal-header-left">
+                <div className="modal-tag-row">
+                  <span className="modal-cat-pill">{item.cat}</span>
+                  <span className="modal-branch-pill">📍 {BRANCHES.find(b => b.id === branch)?.short || 'Campus'}</span>
+                </div>
+                <h2 className="modal-food-title">{item.name}</h2>
+                <div className="modal-base-price">{money(basePrice)}</div>
+              </div>
+              <div className="modal-rating-badge">
+                <span className="modal-rating-score">★ {item.rating || 4.9}</span>
+                <span className="modal-rating-count">({item.reviews || 85} reviews)</span>
+              </div>
+            </div>
+
+            <div className="modal-specs-row">
+              <span className="spec-item">⏱️ Prep: {item.prepTime || '15 min'}</span>
+              <span className="spec-item">✨ Made Fresh Daily</span>
+              <span className="spec-item">🔥 Hot & Ready</span>
+            </div>
+
+            <p className="modal-full-desc">{item.desc}</p>
+
+            {!isAvail && (
+              <div className="modal-alert-box branch-switch-card">
+                <div className="alert-text-block">
+                  <b>Sold exclusively at {otherBranchName}</b>
+                  <p>
+                    {otherBranch === 'sunyani'
+                      ? 'This authentic dish is featured on our Main Branch Signboard (Market Circle).'
+                      : 'This meal is prepared fresh on campus (from our Campus Flyer).'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn-switch-branch-pill"
+                  onClick={() => {
+                    setBranch(otherBranch)
+                    say(`Switched to ${otherBranchName}`)
+                  }}
+                >
+                  Switch to {otherBranchShort} to Order →
+                </button>
+              </div>
+            )}
+
+            {/* Extras & Sides Section */}
+            {!item.isExtra && EXTRAS && EXTRAS.length > 0 && (
+              <div className="modal-extras-section">
+                <div className="extras-section-header">
+                  <div>
+                    <h3 className="extras-section-title">Add Extras & Sides</h3>
+                    <p className="extras-section-sub">Customize your meal with extra protein, soups, or sides</p>
+                  </div>
+                  {selectedExtras.length > 0 && (
+                    <span className="extras-count-badge">+{selectedExtras.length} selected</span>
+                  )}
+                </div>
+
+                <div className="extras-grid-selector">
+                  {EXTRAS.map(extra => {
+                    const isChecked = selectedExtras.some(e => e.id === extra.id)
+                    return (
+                      <button
+                        key={extra.id}
+                        type="button"
+                        className={`extra-option-btn ${isChecked ? 'active' : ''}`}
+                        onClick={() => toggleExtra(extra)}
+                      >
+                        <div className="extra-option-top">
+                          <span className="extra-check-box">
+                            {isChecked ? (
+                              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="20 6 9 17 4 12"/>
+                              </svg>
+                            ) : (
+                              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                                <line x1="12" y1="5" x2="12" y2="19"/>
+                                <line x1="5" y1="12" x2="19" y2="12"/>
+                              </svg>
+                            )}
+                          </span>
+                          <span className="extra-option-price">+{money(extra.price)}</span>
+                        </div>
+                        <span className="extra-option-name">{extra.name}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Pinned Bottom Actions Bar */}
+        <div className="modal-bottom-actions">
+          <div className="modal-stepper">
+            <button
+              type="button"
+              onClick={() => setQty(Math.max(1, qty - 1))}
+              aria-label="Decrease quantity"
+              disabled={qty <= 1}
+            >
+              −
+            </button>
+            <span className="stepper-count">{qty}</span>
+            <button
+              type="button"
+              onClick={() => setQty(qty + 1)}
+              aria-label="Increase quantity"
+            >
+              +
             </button>
           </div>
+
+          <button
+            type="button"
+            className="btn-modal-add"
+            disabled={!isAvail}
+            onClick={() => {
+              add(item.id, qty, selectedExtras)
+              onClose()
+            }}
+          >
+            <span className="btn-modal-add-label">
+              {isAvail ? 'Add to Basket' : 'Unavailable at Branch'}
+            </span>
+            {isAvail && (
+              <b className="btn-modal-add-price">{money(totalUnitPrice * qty)}</b>
+            )}
+          </button>
         </div>
       </div>
     </div>
