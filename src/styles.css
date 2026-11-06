@@ -85,22 +85,19 @@ button, input, select, textarea {
   }
 }
 
-/* When viewing in iPhone Device Frame Mode */
+/* Clean full-bleed mobile / responsive app shell */
 .app-shell.device-frame-mode {
-  padding: 40px 16px;
-  background: radial-gradient(circle at top, #2C2826 0%, #171514 100%);
+  padding: 0;
+  background: var(--bg-app);
 }
 
 .app-shell.device-frame-mode .phone-device-wrapper {
-  max-width: 420px;
-  min-height: 870px;
-  max-height: 90vh;
-  border-radius: 46px;
-  border: 11px solid #231F1D;
-  box-shadow: 0 25px 70px rgba(0, 0, 0, 0.45), inset 0 0 0 2px rgba(255, 255, 255, 0.1);
-  overflow-y: auto;
-  overflow-x: hidden;
-  position: relative;
+  max-width: 100%;
+  min-height: 100vh;
+  max-height: none;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
 }
 
 .device-status-bar {
@@ -2646,12 +2643,6 @@ button, input, select, textarea {
 .btn-order-cta.grow {
   flex: 1;
 }
-  background: #FFFFFF;
-  padding: 14px 20px;
-  border-radius: var(--radius-full);
-  font-weight: 700;
-  cursor: pointer;
-}
 
 /* ==========================================================================
    4. Tracking Screen (Bon Appétit Screen 4)
@@ -3074,7 +3065,7 @@ button, input, select, textarea {
 }
 
 /* ==========================================================================
-   Bottom Mobile App Navigation Bar
+   Bottom Mobile App Navigation Bar (Static / Always at the Very Bottom)
    ========================================================================== */
 
 .bottom-nav-bar {
@@ -3083,13 +3074,11 @@ button, input, select, textarea {
   left: 0;
   right: 0;
   width: 100%;
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid rgba(128, 20, 27, 0.1);
+  background: #FFFFFF;
+  border-top: 1px solid rgba(128, 20, 27, 0.12);
   z-index: 9999;
-  box-shadow: 0 -4px 20px rgba(128, 20, 27, 0.08);
-  padding-bottom: env(safe-area-inset-bottom, 6px);
+  box-shadow: 0 -4px 24px rgba(128, 20, 27, 0.08);
+  padding-bottom: max(6px, env(safe-area-inset-bottom, 8px));
 }
 
 .bottom-nav-container {
@@ -3157,7 +3146,7 @@ button, input, select, textarea {
 }
 
 /* ==========================================================================
-   Footer
+   Footer (Strictly Hidden in Phone View / Mobile Screens)
    ========================================================================== */
 
 .modern-footer {
@@ -3165,6 +3154,19 @@ button, input, select, textarea {
   color: #FFFFFF;
   padding: 30px 20px 80px;
   margin-top: 40px;
+}
+
+/* Hide footer completely in phone view & mobile layouts */
+@media (max-width: 860px) {
+  .modern-footer,
+  .desktop-only-footer {
+    display: none !important;
+  }
+}
+
+.phone-device-wrapper .modern-footer,
+.phone-device-wrapper .desktop-only-footer {
+  display: none !important;
 }
 
 .footer-container {
