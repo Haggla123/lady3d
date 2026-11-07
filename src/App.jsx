@@ -1,13 +1,28 @@
 import { useEffect, useState } from 'react'
 import { go, money, useApp, useHash } from './store.jsx'
-import { Link, Wordmark, BranchPicker, BottomNavBar, MobileTopNav, FoodDetailModal, GoogleAuthModal } from './components/ui.jsx'
+import { Link, Wordmark, BranchPicker, BottomNavBar, MobileTopNav, FoodDetailModal } from './components/ui.jsx'
 import { Onboarding, Home, Menu, FoodPage, Cart, Checkout, OrderSuccess, Track, Account, Community, SignIn, SignUp } from './pages/Customer.jsx'
 import Admin from './pages/Admin.jsx'
 import BranchDashboard from './pages/BranchDashboard.jsx'
 
+function StaffLoginPage() {
+  const { staffLogin, say } = useApp()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const signIn = async event => {
+    event.preventDefault()
+    setBusy(true)
+    try { await staffLogin(email, password); go('/admin/overview') }
+    catch (error) { say(error.message) }
+    finally { setBusy(false) }
+  }
+  return <div className="auth-modern-screen"><div className="auth-card-container"><h1 className="auth-title">Staff sign in</h1><p className="auth-subtitle">Use your staff account to open the operations dashboard.</p><form className="auth-form-fields" onSubmit={signIn}><label className="input-field-wrap"><span>Email address</span><input type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} /></label><label className="input-field-wrap"><span>Password</span><input type="password" autoComplete="current-password" required value={password} onChange={e => setPassword(e.target.value)} /></label><button className="btn-auth-submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button></form></div></div>
+}
+
 export default function App() {
   const h = useHash()
-  const { count, toast, user, activeFood, setActiveFood, googleModal, setGoogleModal, loginGoogle } = useApp()
+  const { count, toast, user, activeFood, setActiveFood, staffUser, authReady } = useApp()
   const path = h.split('?')[0]
   const seg = path.split('/').filter(Boolean)
 
@@ -28,6 +43,8 @@ export default function App() {
 
   // If user accesses /admin directly
   if (seg[0] === 'admin') {
+    if (!authReady) return <div className="wrap sec">Checking staff session…</div>
+    if (!staffUser) return <><StaffLoginPage />{toast && <div className="toast-pill">{toast}</div>}</>
     return (
       <>
         <Admin section={seg[1]} />
@@ -38,7 +55,12 @@ export default function App() {
 
   // If user accesses /branch, /branch/sunyani, or /branch/cug directly
   if (seg[0] === 'branch') {
+    if (!authReady) return <div className="wrap sec">Checking staff session…</div>
+    if (!staffUser) return <><StaffLoginPage />{toast && <div className="toast-pill">{toast}</div>}</>
     const branchTarget = seg[1] === 'sunyani' ? 'sunyani' : 'cug'
+    if (staffUser.assignedBranch && staffUser.assignedBranch !== 'all' && staffUser.assignedBranch !== branchTarget) {
+      return <div className="wrap sec"><h1>Branch access restricted</h1><p>Your staff account is assigned to another branch.</p></div>
+    }
     return (
       <>
         <BranchDashboard branchId={branchTarget} section={seg[2] || 'overview'} />
@@ -92,6 +114,7 @@ export default function App() {
   // Sequence Step 3: Main Application Experience (Preserved on refresh)
   let pageContent
   if (!seg.length) pageContent = <Home />
+  else if (seg[0] === 'staff-login') pageContent = <StaffLoginPage />
   else if (seg[0] === 'menu') pageContent = <Menu key={h} />
   else if (seg[0] === 'food') pageContent = <FoodPage id={seg[1]} />
   else if (seg[0] === 'cart') pageContent = <Cart />
@@ -145,13 +168,6 @@ export default function App() {
         {activeFood && (
           <FoodDetailModal item={activeFood} onClose={() => setActiveFood(null)} />
         )}
-
-        {/* Modal for Google Authentication */}
-        <GoogleAuthModal
-          isOpen={googleModal}
-          onClose={() => setGoogleModal(false)}
-          onSelectAccount={loginGoogle}
-        />
 
         {/* Footer - Strictly hidden in phone view / mobile */}
         <footer className="modern-footer desktop-only-footer">

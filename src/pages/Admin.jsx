@@ -150,15 +150,15 @@ function Overview() {
   const ready = orders.filter(o => o.status === 3)
   const newOrders = orders.filter(o => o.status === 0)
   const confirmed = orders.filter(o => o.status === 1)
-  const rev = orders.filter(o => o.status === 4).reduce((s, o) => s + o.total, 0)
-  const totalMeals = orders.length || 45
+  const rev = orders.filter(o => o.status === 4 && o.paid).reduce((s, o) => s + o.total, 0)
+  const totalMeals = orders.length
 
   // Donut data with signature brand colors
   const donutData = [
-    { label: 'Ready for Pickup', val: ready.length || 10, color: '#22C55E' },
-    { label: 'Cooking on Stove', val: cooking.length || 20, color: '#3B82F6' },
-    { label: 'Confirmed / Queued', val: confirmed.length || 7, color: '#EAB308' },
-    { label: 'New / Received', val: newOrders.length || 8, color: '#80141B' },
+    { label: 'Ready for Pickup', val: ready.length, color: '#22C55E' },
+    { label: 'Cooking on Stove', val: cooking.length, color: '#3B82F6' },
+    { label: 'Confirmed / Queued', val: confirmed.length, color: '#EAB308' },
+    { label: 'New / Received', val: newOrders.length, color: '#80141B' },
   ]
 
   return (
@@ -213,7 +213,7 @@ function Overview() {
           </div>
           <div className="pbd-kpi-meta">
             <b className="pbd-kpi-val">{totalMeals}</b>
-            <span className="pbd-kpi-tag">Orders Today</span>
+            <span className="pbd-kpi-tag">Orders Loaded</span>
           </div>
         </div>
 
@@ -242,7 +242,7 @@ function Overview() {
       <div className="pbd-executive-card">
         <div className="pbd-card-head-row">
           <h3 className="pbd-card-title">Kitchen & Order Workflow</h3>
-          <span className="pbd-card-subtitle">{totalMeals} meals processed</span>
+          <span className="pbd-card-subtitle">{totalMeals} orders loaded</span>
         </div>
 
         <div className="pbd-donut-progress-split">
@@ -255,9 +255,9 @@ function Overview() {
                 <span className="pbd-lbl-name">Ready for Pickup</span>
               </div>
               <div className="pbd-bar-track">
-                <div className="pbd-bar-fill green" style={{ width: `${Math.round(((ready.length || 10) / totalMeals) * 100)}%` }} />
+                <div className="pbd-bar-fill green" style={{ width: `${totalMeals ? Math.round((ready.length / totalMeals) * 100) : 0}%` }} />
               </div>
-              <b className="pbd-row-count">{ready.length || 10}</b>
+              <b className="pbd-row-count">{ready.length}</b>
             </div>
 
             <div className="pbd-progress-row">
@@ -266,9 +266,9 @@ function Overview() {
                 <span className="pbd-lbl-name">Cooking on Stove</span>
               </div>
               <div className="pbd-bar-track">
-                <div className="pbd-bar-fill blue" style={{ width: `${Math.round(((cooking.length || 20) / totalMeals) * 100)}%` }} />
+                <div className="pbd-bar-fill blue" style={{ width: `${totalMeals ? Math.round((cooking.length / totalMeals) * 100) : 0}%` }} />
               </div>
-              <b className="pbd-row-count">{cooking.length || 20}</b>
+              <b className="pbd-row-count">{cooking.length}</b>
             </div>
 
             <div className="pbd-progress-row">
@@ -277,9 +277,9 @@ function Overview() {
                 <span className="pbd-lbl-name">Confirmed / Queued</span>
               </div>
               <div className="pbd-bar-track">
-                <div className="pbd-bar-fill yellow" style={{ width: `${Math.round(((confirmed.length || 7) / totalMeals) * 100)}%` }} />
+                <div className="pbd-bar-fill yellow" style={{ width: `${totalMeals ? Math.round((confirmed.length / totalMeals) * 100) : 0}%` }} />
               </div>
-              <b className="pbd-row-count">{confirmed.length || 7}</b>
+              <b className="pbd-row-count">{confirmed.length}</b>
             </div>
 
             <div className="pbd-progress-row">
@@ -288,9 +288,9 @@ function Overview() {
                 <span className="pbd-lbl-name">New / Received</span>
               </div>
               <div className="pbd-bar-track">
-                <div className="pbd-bar-fill red" style={{ width: `${Math.round(((newOrders.length || 8) / totalMeals) * 100)}%` }} />
+                <div className="pbd-bar-fill red" style={{ width: `${totalMeals ? Math.round((newOrders.length / totalMeals) * 100) : 0}%` }} />
               </div>
-              <b className="pbd-row-count">{newOrders.length || 8}</b>
+              <b className="pbd-row-count">{newOrders.length}</b>
             </div>
           </div>
         </div>
@@ -301,7 +301,7 @@ function Overview() {
 
 // 2. Kitchen & Orders (Kanban + Branch Tabs + Search + Audio Alert + 1-Tap WhatsApp Dispatch)
 function Orders() {
-  const { orders, setStatus, markPaid, say } = useApp()
+  const { orders, setStatus, say } = useApp()
   const [branchFilter, setBranchFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('active')
   const [searchVal, setSearchVal] = useState('')
@@ -455,9 +455,7 @@ function Orders() {
                 {o.paid ? (
                   <span className="paid-pill">Paid</span>
                 ) : o.pay === 'momo' ? (
-                  <button className="btn-momo-pay" onClick={() => { markPaid(o.ref); say(`Order #${o.ref} marked paid`) }}>
-                    Confirm MoMo
-                  </button>
+                  <span className="unpaid-pill">Mobile Money pending provider confirmation</span>
                 ) : (
                   <span className="unpaid-pill">Cash</span>
                 )}
@@ -940,34 +938,34 @@ function Customers() {
 
 // 7. Staff & Roles Management Tab (Adding Staff, Changing Roles, View As)
 function Staff() {
-  const { staff, setStaff, role, setRole, say } = useApp()
-  const [newStaff, setNewStaff] = useState({ name: '', role: 'Cashier', branch: 'cug', phone: '' })
+  const { say, api } = useApp()
+  const [staff, setStaff] = useState([])
+  const [newStaff, setNewStaff] = useState({ name: '', email: '', password: '', role: 'Cashier', branch: 'cug', phone: '' })
+  useEffect(() => { api('/admin/staff').then(({ staff: rows }) => setStaff(rows)).catch(error => say(error.message)) }, [])
 
-  const handleAddStaff = () => {
-    if (!newStaff.name.trim() || !newStaff.phone.trim()) return say('Please enter staff name and phone')
-    const added = {
-      id: Date.now(),
-      name: newStaff.name.trim(),
-      role: newStaff.role,
-      branch: newStaff.branch,
-      phone: newStaff.phone.trim(),
-      active: true
-    }
-    setStaff([...staff, added])
-    setNewStaff({ name: '', role: 'Cashier', branch: 'cug', phone: '' })
-    say(`Staff member "${added.name}" added as ${added.role}!`)
+  const handleAddStaff = async () => {
+    if (!newStaff.name.trim() || !newStaff.email.trim() || !newStaff.phone.trim() || newStaff.password.length < 10) return say('Enter the staff details and a password with at least 10 characters')
+    try {
+      const { staff: added } = await api('/admin/staff', { method: 'POST', body: JSON.stringify(newStaff) })
+      setStaff(rows => [added, ...rows])
+      setNewStaff({ name: '', email: '', password: '', role: 'Cashier', branch: 'cug', phone: '' })
+      say(`Staff account created for ${added.name}.`)
+    } catch (error) { say(error.message) }
   }
 
   const handleDeleteStaff = (id, name) => {
     if (confirm(`Remove staff member "${name}"?`)) {
-      setStaff(staff.filter(s => s.id !== id))
-      say(`Removed ${name}`)
+      api(`/admin/staff/${id}`, { method: 'PATCH', body: JSON.stringify({ active: false }) })
+        .then(({ staff: updated }) => setStaff(rows => rows.map(row => row.id === id ? updated : row)))
+        .then(() => say(`Disabled ${name}'s sign-in.`))
+        .catch(error => say(error.message))
     }
   }
 
-  const handleToggleActive = (id) => {
-    setStaff(staff.map(s => s.id === id ? { ...s, active: !s.active } : s))
-    say('Staff status updated')
+  const handleToggleActive = (member) => {
+    api(`/admin/staff/${member.id}`, { method: 'PATCH', body: JSON.stringify({ active: !member.active }) })
+      .then(({ staff: updated }) => setStaff(rows => rows.map(row => row.id === member.id ? updated : row)))
+      .catch(error => say(error.message))
   }
 
   return (
@@ -975,7 +973,7 @@ function Staff() {
       <div className="pbd-card-head-row">
         <div>
           <h3>Staff Roster & Permissions Management</h3>
-          <p className="muted small">Add staff members, assign kitchen roles, and simulate role permissions.</p>
+          <p className="muted small">Create real staff sign-ins, assign a branch and disable accounts when access should end.</p>
         </div>
       </div>
 
@@ -992,14 +990,24 @@ function Staff() {
         </label>
 
         <label>
+          <span className="field-label-small">Staff Email *</span>
+          <input type="email" placeholder="name@example.com" value={newStaff.email} onChange={e => setNewStaff({ ...newStaff, email: e.target.value })} className="pbd-input" />
+        </label>
+
+        <label>
+          <span className="field-label-small">Temporary Password *</span>
+          <input type="password" minLength={10} autoComplete="new-password" placeholder="At least 10 characters" value={newStaff.password} onChange={e => setNewStaff({ ...newStaff, password: e.target.value })} className="pbd-input" />
+        </label>
+
+        <label>
           <span className="field-label-small">Assigned Role *</span>
           <select
             value={newStaff.role}
             onChange={e => setNewStaff({ ...newStaff, role: e.target.value })}
             className="pbd-select"
           >
-            {Object.keys(ROLES).map(r => <option key={r} value={r}>{r}</option>)}
-            <option value="Kitchen Chef">Kitchen Chef</option>
+            <option value="Cashier">Cashier</option>
+            <option value="Manager">Manager</option>
           </select>
         </label>
 
@@ -1010,7 +1018,6 @@ function Staff() {
             onChange={e => setNewStaff({ ...newStaff, branch: e.target.value })}
             className="pbd-select"
           >
-            <option value="all">All Branches</option>
             <option value="cug">Catholic University (Annex)</option>
             <option value="sunyani">Sunyani Main Branch</option>
           </select>
@@ -1034,9 +1041,10 @@ function Staff() {
       </div>
 
       <Table
-        head={['Staff Member', 'Role', 'Assigned Branch', 'Contact Phone', 'Active Status', 'Simulate View', 'Actions']}
+        head={['Staff Member', 'Sign-in Email', 'Role', 'Assigned Branch', 'Contact Phone', 'Active Status', 'Actions']}
         rows={staff.map(s => [
           <strong key="n">{s.name}</strong>,
+          <span key="e">{s.email}</span>,
           <span key="r" className="role-tag-badge">{s.role}</span>,
           <span key="b">{s.branch === 'all' ? 'All Branches' : bn(s.branch)}</span>,
           <span key="p">{s.phone}</span>,
@@ -1044,26 +1052,16 @@ function Staff() {
             <input
               type="checkbox"
               checked={s.active}
-              onChange={() => handleToggleActive(s.id)}
+              onChange={() => handleToggleActive(s)}
             />
             <span className="pbd-slider" />
           </label>,
-          <button
-            key="v"
-            className={`btn-sound-small ${role === s.role ? 'on' : ''}`}
-            onClick={() => {
-              setRole(s.role in ROLES ? s.role : 'Cashier')
-              say(`Now viewing dashboard as ${s.role}`)
-            }}
-          >
-            {role === s.role ? 'Currently Viewing' : `View as ${s.role}`}
-          </button>,
           <button
             key="d"
             className="btn-del-sm"
             onClick={() => handleDeleteStaff(s.id, s.name)}
           >
-            Delete
+            Disable
           </button>
         ])}
       />
@@ -1237,21 +1235,7 @@ function Payments() {
           <span key="s" className={`paid-pill ${o.paid ? 'paid' : 'unpaid'}`}>
             {o.paid ? 'Verified Paid' : 'Pending Verification'}
           </span>,
-          <span key="a">
-            {!o.paid ? (
-              <button
-                className="btn-momo-pay"
-                onClick={() => {
-                  markPaid(o.ref)
-                  say(`Order #${o.ref} marked verified & paid!`)
-                }}
-              >
-                Mark Paid ✓
-              </button>
-            ) : (
-              <span className="verified-text">Verified</span>
-            )}
-          </span>
+          <span key="a">{o.paid ? <span className="verified-text">Provider verified</span> : <span>Awaiting provider confirmation</span>}</span>
         ])}
       />
     </div>
@@ -1654,14 +1638,12 @@ function RightActivityPanel() {
 
 // Main Admin Component with Red & White Theme + Logout functionality
 export default function Admin({ section = 'overview' }) {
-  const { role, setRole, logoutUser, say } = useApp()
-  const allowed = (ROLES[role] || ROLES.Owner).includes(section)
+  const { role, staffUser, staffLogout, say } = useApp()
+  const allowed = (ROLES[role] || []).includes(section)
   const ActiveView = VIEWS[section] || Overview
 
   const handleLogout = () => {
-    logoutUser()
-    say('Signed out from Admin portal')
-    go('/login')
+    staffLogout().then(() => { say('Signed out from Admin portal'); go('/staff-login') }).catch(error => say(error.message))
   }
 
   return (
@@ -1688,7 +1670,7 @@ export default function Admin({ section = 'overview' }) {
           <nav className="pbd-nav-list">
             {ADMIN_NAV.map(([k, n]) => {
               const isActive = k === section
-              const isAccessible = (ROLES[role] || ROLES.Owner).includes(k)
+              const isAccessible = (ROLES[role] || []).includes(k)
               return (
                 <Link
                   key={k}
@@ -1750,12 +1732,7 @@ export default function Admin({ section = 'overview' }) {
             </h1>
 
             <div className="pbd-header-right">
-              <label className="pbd-role-pill">
-                <span>View as:</span>
-                <select value={role} onChange={e => setRole(e.target.value)}>
-                  {Object.keys(ROLES).map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </label>
+              <span className="pbd-role-pill">Signed in: {staffUser?.name} · {role}</span>
 
               <button
                 className="pbd-header-logout-btn"
@@ -1779,7 +1756,7 @@ export default function Admin({ section = 'overview' }) {
               <div className="pbd-restricted-box">
                 <h3>Access Restricted</h3>
                 <p>Your current role ({role}) does not have permission to access this section.</p>
-                <button className="btn-pbd-action" onClick={() => setRole('Owner')}>Switch to Owner</button>
+                <Link to="/staff-login" className="btn-pbd-action">Sign in with an authorized role</Link>
               </div>
             )}
           </div>

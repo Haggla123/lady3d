@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { money, useApp, go } from '../store.jsx'
+import { api, money, useApp, go } from '../store.jsx'
 import { Link } from '../components/ui.jsx'
 import { BRANCHES, STATUSES, EXTRAS, buildOrderWhatsAppUrl } from '../data.js'
 import { playKitchenChime } from './Admin.jsx'
@@ -80,12 +80,11 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
     orders,
     setOrders,
     setStatus,
-    markPaid,
     staff,
     setStaff,
     branchStatus,
     setBranchStatus,
-    logoutUser,
+    staffLogout,
     say
   } = useApp()
 
@@ -136,9 +135,9 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
   const readyOrders = branchOrders.filter(o => o.status === 3)
   const newOrders = branchOrders.filter(o => o.status === 0)
   const confirmedOrders = branchOrders.filter(o => o.status === 1)
-  const branchRevenue = completedOrders.reduce((sum, o) => sum + (o.total || 0), 0)
-  const cashTotal = completedOrders.filter(o => o.pay === 'cash').reduce((sum, o) => sum + (o.total || 0), 0)
-  const momoTotal = completedOrders.filter(o => o.pay === 'momo').reduce((sum, o) => sum + (o.total || 0), 0)
+  const branchRevenue = completedOrders.filter(o => o.paid).reduce((sum, o) => sum + (o.total || 0), 0)
+  const cashTotal = completedOrders.filter(o => o.pay === 'cash' && o.paid).reduce((sum, o) => sum + (o.total || 0), 0)
+  const momoTotal = completedOrders.filter(o => o.pay === 'momo' && o.paid).reduce((sum, o) => sum + (o.total || 0), 0)
 
   // Meals for this branch
   const branchMeals = menu.filter(m => !m.avail || m.avail[lockedBranchId] !== false)
@@ -147,9 +146,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
   const branchStaffList = staff.filter(s => s.branch === lockedBranchId || s.branch === 'all')
 
   const handleLogout = () => {
-    logoutUser()
-    say('Signed out from branch portal')
-    go('/login')
+    staffLogout().then(() => { say('Signed out from branch portal'); go('/staff-login') }).catch(error => say(error.message))
   }
 
   const toggleBranchOpen = () => {
@@ -210,7 +207,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
   }
 
   // POS Walk-in submit
-  const handlePosSubmit = () => {
+  const handlePosSubmit = async () => {
     const selectedMeal = branchMeals.find(m => m.id === posMealId) || branchMeals[0]
     if (!selectedMeal) return say('Please select a meal')
     if (!posCustName.trim()) return say('Please enter customer name or location')
@@ -219,30 +216,18 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
     const extrasTotal = posExtras.reduce((sum, e) => sum + e.price, 0)
     const lineTotal = (mealPrice * posQty) + extrasTotal
 
-    const newOrder = {
-      ref: `POS-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
-      name: posCustName.trim(),
-      phone: posCustPhone.trim() || 'Counter Walk-In',
-      address: posLocation.trim() || `${currentBranch.short} Counter Pickup`,
-      branch: lockedBranchId,
-      orderType: posLocation.trim() ? 'delivery' : 'pickup',
-      items: [
-        {
-          id: selectedMeal.id,
-          name: selectedMeal.name,
-          qty: posQty,
-          price: mealPrice,
-          extras: posExtras
-        }
-      ],
-      total: lineTotal,
-      pay: posPayType,
-      paid: posPayType === 'cash',
-      status: 1, // Confirmed
-      time: new Date().toTimeString().slice(0, 5)
-    }
-
-    setOrders([newOrder, ...orders])
+    let newOrder
+    try {
+      const result = await api('/orders', { method: 'POST', body: JSON.stringify({
+        items: [{ id: selectedMeal.id, qty: posQty, extras: posExtras.map(extra => extra.id) }],
+        branch: lockedBranchId, orderType: posLocation.trim() ? 'delivery' : 'pickup',
+        name: posCustName.trim(), phone: posCustPhone.trim() || '0000000000',
+        address: posLocation.trim() || undefined, pay: posPayType
+      }) })
+      newOrder = { ...result.order, status: 1 }
+      await api(`/admin/orders/${newOrder.ref}/status`, { method: 'PATCH', body: JSON.stringify({ status: 1 }) })
+      setOrders([newOrder, ...orders])
+    } catch (error) { return say(error.message) }
     playKitchenChime()
     say(`Walk-in order #${newOrder.ref} added to kitchen queue!`)
 
@@ -321,12 +306,12 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
 
   // Donut data for branch
   const donutData = [
-    { label: 'Ready for Pickup', val: readyOrders.length || 2, color: '#22C55E' },
-    { label: 'Cooking on Stove', val: cookingOrders.length || 3, color: '#3B82F6' },
-    { label: 'Confirmed / Queued', val: confirmedOrders.length || 1, color: '#EAB308' },
-    { label: 'New / Received', val: newOrders.length || 1, color: '#80141B' },
+    { label: 'Ready for Pickup', val: readyOrders.length, color: '#22C55E' },
+    { label: 'Cooking on Stove', val: cookingOrders.length, color: '#3B82F6' },
+    { label: 'Confirmed / Queued', val: confirmedOrders.length, color: '#EAB308' },
+    { label: 'New / Received', val: newOrders.length, color: '#80141B' },
   ]
-  const totalTickets = branchOrders.length || 7
+  const totalTickets = branchOrders.length
 
   return (
     <div className="pbd-canvas-wrapper">
@@ -579,7 +564,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                           <span className="pbd-lbl-name">Ready for Pickup</span>
                         </div>
                         <div className="pbd-bar-track">
-                          <div className="pbd-bar-fill green" style={{ width: `${Math.round(((readyOrders.length || 2) / totalTickets) * 100)}%` }} />
+                          <div className="pbd-bar-fill green" style={{ width: `${totalTickets ? Math.round((readyOrders.length / totalTickets) * 100) : 0}%` }} />
                         </div>
                         <b className="pbd-row-count">{readyOrders.length}</b>
                       </div>
@@ -590,7 +575,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                           <span className="pbd-lbl-name">Cooking on Stove</span>
                         </div>
                         <div className="pbd-bar-track">
-                          <div className="pbd-bar-fill blue" style={{ width: `${Math.round(((cookingOrders.length || 3) / totalTickets) * 100)}%` }} />
+                          <div className="pbd-bar-fill blue" style={{ width: `${totalTickets ? Math.round((cookingOrders.length / totalTickets) * 100) : 0}%` }} />
                         </div>
                         <b className="pbd-row-count">{cookingOrders.length}</b>
                       </div>
@@ -601,7 +586,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                           <span className="pbd-lbl-name">Confirmed / Queued</span>
                         </div>
                         <div className="pbd-bar-track">
-                          <div className="pbd-bar-fill yellow" style={{ width: `${Math.round(((confirmedOrders.length || 1) / totalTickets) * 100)}%` }} />
+                          <div className="pbd-bar-fill yellow" style={{ width: `${totalTickets ? Math.round((confirmedOrders.length / totalTickets) * 100) : 0}%` }} />
                         </div>
                         <b className="pbd-row-count">{confirmedOrders.length}</b>
                       </div>
@@ -612,7 +597,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                           <span className="pbd-lbl-name">New / Received</span>
                         </div>
                         <div className="pbd-bar-track">
-                          <div className="pbd-bar-fill red" style={{ width: `${Math.round(((newOrders.length || 1) / totalTickets) * 100)}%` }} />
+                          <div className="pbd-bar-fill red" style={{ width: `${totalTickets ? Math.round((newOrders.length / totalTickets) * 100) : 0}%` }} />
                         </div>
                         <b className="pbd-row-count">{newOrders.length}</b>
                       </div>
@@ -743,15 +728,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                             {o.paid ? (
                               <span className="paid-pill">Paid</span>
                             ) : o.pay === 'momo' ? (
-                              <button
-                                className="btn-momo-pay"
-                                onClick={() => {
-                                  markPaid(o.ref)
-                                  say(`Order #${o.ref} marked MoMo Paid`)
-                                }}
-                              >
-                                Confirm MoMo
-                              </button>
+                              <span className="unpaid-pill">Mobile Money pending provider confirmation</span>
                             ) : (
                               <span className="unpaid-pill">Cash</span>
                             )}
@@ -1011,7 +988,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                               const m = branchMeals.find(x => x.id === posMealId)
                               const p = m ? (m.prices?.[lockedBranchId] ?? m.price) : 0
                               const extrasSum = posExtras.reduce((s, e) => s + e.price, 0)
-                              const total = (p * posQty) + extrasSum
+                              const total = (p + extrasSum) * posQty
                               return (
                                 <>
                                   <div className="paper-line">
@@ -1306,28 +1283,15 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
             <div className="pbd-subhead-row">
               <span className="pbd-subhead-title">Latest Payments ({currentBranch.short})</span>
             </div>
-
-            <div className="pbd-shoutout-card">
-              <div className="pbd-avatar-wrap">
-                <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&q=80" alt="Customer" className="pbd-avatar-img" />
-                <span className="pbd-green-dot" />
+            {completedOrders.filter(order => order.paid).slice(0, 5).map(order => (
+              <div className="pbd-shoutout-card" key={order.ref}>
+                <div className="pbd-shout-meta">
+                  <strong>{order.name}</strong>
+                  <p>Paid {money(order.total)} · {order.pay === 'momo' ? 'Mobile Money' : 'Cash'} · {order.ref}</p>
+                </div>
               </div>
-              <div className="pbd-shout-meta">
-                <strong>{lockedBranchId === 'sunyani' ? 'Yaw Manu' : 'Kofi Mensah'}</strong>
-                <p>Paid GH₵ {lockedBranchId === 'sunyani' ? '45 via MoMo' : '60 via MoMo'}</p>
-              </div>
-            </div>
-
-            <div className="pbd-shoutout-card">
-              <div className="pbd-avatar-wrap">
-                <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=80&q=80" alt="Customer" className="pbd-avatar-img" />
-                <span className="pbd-green-dot" />
-              </div>
-              <div className="pbd-shout-meta">
-                <strong>{lockedBranchId === 'sunyani' ? 'Julie Martin' : 'Ama Boateng'}</strong>
-                <p>Paid Cash on Counter</p>
-              </div>
-            </div>
+            ))}
+            {!completedOrders.some(order => order.paid) && <p className="tbl-empty">No confirmed payments yet.</p>}
           </div>
         </aside>
       </div>

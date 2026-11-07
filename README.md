@@ -9,7 +9,7 @@ Official web application, kitchen management portal, and branch consoles for **L
 
 ## 🚀 Deploy to Vercel
 
-This repository is **100% Vercel Ready** with pre-configured `vercel.json` SPA routing rewrites, immutable asset caching, and security headers.
+The customer frontend can be deployed to Vercel. Real ordering and staff operations also require the Express API, MongoDB, and (for Mobile Money) configured Hubtel credentials; these are not hosted by the static Vercel frontend configuration alone.
 
 ### Option 1: Via Vercel Web Dashboard (Recommended)
 1. Push this repository to GitHub, GitLab, or Bitbucket.
@@ -20,7 +20,7 @@ This repository is **100% Vercel Ready** with pre-configured `vercel.json` SPA r
    - **Build Command**: `npm run build`
    - **Output Directory**: `dist`
    - **Install Command**: `npm install`
-5. Click **Deploy**. Your app will be live with full global CDN and SSL!
+5. Configure `VITE_API_URL` to point to a deployed API and configure the server environment variables described in `.env.example`. Without a reachable API, account, ordering, and operations features will not work.
 
 ### Option 2: Via Vercel CLI
 ```bash
@@ -49,6 +49,8 @@ npm run dev
 npm run build
 npm run preview
 ```
+
+The API requires Node.js 20.19+, MongoDB, and a local `.env` based on `.env.example`. Run it with `npm run server`. Seed an initial owner only after setting `SEED_OWNER_EMAIL` and `SEED_OWNER_PASSWORD` in `.env`, then run `npm run seed`. Keep the API and database on trusted infrastructure and use HTTPS in production.
 
 ---
 

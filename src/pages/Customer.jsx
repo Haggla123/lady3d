@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { go, money, useApp } from '../store.jsx'
-import { Link, Food, DishCard, BranchPicker, Stars, GoogleIcon, CategoryIcon } from '../components/ui.jsx'
+import { useEffect, useState } from 'react'
+import { api, go, money, useApp } from '../store.jsx'
+import { Link, Food, DishCard, BranchPicker, Stars, CategoryIcon } from '../components/ui.jsx'
 import { STATUSES, BRANCHES, CATEGORIES_WITH_ICONS, PROMO_CODES, EXTRAS, buildOrderWhatsAppUrl } from '../data.js'
 
 // 1. Onboarding / Get Started Sequence (SnapEats Screen 1)
@@ -786,12 +786,12 @@ export function Cart() {
 
 // 6. Checkout Flow
 export function Checkout() {
-  const { lines, subtotal, discount, deliveryFee, total, price, ok, branch, place, user, setQty, orderType, setOrderType } = useApp()
+  const { lines, subtotal, discount, deliveryFee, total, price, ok, branch, place, user, setQty, orderType, setOrderType, say, momoEnabled } = useApp()
   const [f, setF] = useState({
-    name: user?.name || 'Julie Martin',
-    phone: '0241234567',
-    pay: 'momo',
-    address: 'Hall 3, Room 14, Catholic University Fiapre',
+    name: user?.name || '',
+    phone: user?.phone || '',
+    pay: 'cash',
+    address: '',
     note: ''
   })
   const [step, setStep] = useState(1)
@@ -821,10 +821,13 @@ export function Checkout() {
     setStep(2)
   }
 
-  const submit = () => {
+  const submit = async () => {
     if (bad.length) return setStep(1)
-    const ref = place(f)
-    go('/success/' + ref)
+    try {
+      const ref = await place(f)
+      if (f.pay === 'momo') return
+      go('/success/' + ref)
+    } catch (error) { setErr(error.message); say(error.message) }
   }
 
   return (
@@ -919,7 +922,7 @@ export function Checkout() {
             <div className="form-group-section">
               <label className="field-group-title">3. Payment Method</label>
               <div className="payment-options-grid">
-                <label className={`payment-card-opt ${f.pay === 'momo' ? 'selected' : ''}`}>
+                {momoEnabled && <label className={`payment-card-opt ${f.pay === 'momo' ? 'selected' : ''}`}>
                   <input
                     type="radio"
                     name="pay"
@@ -931,9 +934,9 @@ export function Checkout() {
                       <b>📱 Mobile Money (MTN / Telecel / AT)</b>
                       <span className="pay-badge-popular">Instant</span>
                     </div>
-                    <small>Payment authorization prompt sent to your phone</small>
+                    <small>Continue to Hubtel secure checkout to approve payment</small>
                   </div>
-                </label>
+                </label>}
 
                 <label className={`payment-card-opt ${f.pay === 'cash' ? 'selected' : ''}`}>
                   <input
@@ -1240,7 +1243,16 @@ export function Track({ refId }) {
   const { orders } = useApp()
   const [inputRef, setInputRef] = useState(refId || '')
   const currentRef = (refId || '').toUpperCase()
-  const order = orders.find(x => x.ref === currentRef)
+  const [serverOrder, setServerOrder] = useState(null)
+  useEffect(() => {
+    if (!currentRef) return
+    let active = true
+    const refresh = () => api(`/orders/${encodeURIComponent(currentRef)}`).then(({ order: value }) => { if (active) setServerOrder(value) }).catch(() => { if (active) setServerOrder(null) })
+    refresh()
+    const timer = setInterval(refresh, 15000)
+    return () => { active = false; clearInterval(timer) }
+  }, [currentRef])
+  const order = orders.find(x => x.ref === currentRef) || serverOrder
 
   return (
     <div className="track-modern-page">
@@ -1346,9 +1358,9 @@ export function Track({ refId }) {
 
 // 8. Sign In Page (Bon Appétit style)
 export function SignIn() {
-  const { user, loginUser, setGoogleModal, say } = useApp()
-  const [email, setEmail] = useState('julie.martin@cug.edu.gh')
-  const [password, setPassword] = useState('••••••••')
+  const { user, loginUser, say } = useApp()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
 
@@ -1368,19 +1380,9 @@ export function SignIn() {
 
   const handleSignIn = (e) => {
     e.preventDefault()
-    if (!email.trim() || !email.includes('@')) {
-      return say('Please enter a valid email address')
-    }
-    const namePart = email.split('@')[0].replace(/[._]/g, ' ')
-    const formattedName = namePart.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-    loginUser({
-      name: formattedName || 'Student Customer',
-      email: email.trim(),
-      phone: '0241234567',
-      googleAuth: false,
-      avatar: ''
-    })
-    go('/account')
+    api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
+      .then(({ user: account }) => { loginUser(account); go('/account') })
+      .catch(error => say(error.message))
   }
 
   return (
@@ -1395,48 +1397,11 @@ export function SignIn() {
           <p className="auth-subtitle">Sign in to continue enjoying hot Ghanaian meals, track orders & earn rewards.</p>
         </div>
 
-        {/* Google Sign In Button */}
-        <div className="social-auth-section">
-          <button
-            type="button"
-            className="btn-google-auth"
-            onClick={() => setGoogleModal(true)}
-          >
-            <GoogleIcon />
-            <span>Continue with Google</span>
-          </button>
-        </div>
-
         <div className="auth-divider-line">
           <span>or sign in with email</span>
         </div>
 
         <form onSubmit={handleSignIn} className="auth-form-fields">
-          {/* Quick autofill demo chips */}
-          <div className="auth-quick-autofill">
-            <span className="autofill-hint">Demo accounts:</span>
-            <button
-              type="button"
-              className="autofill-chip"
-              onClick={() => {
-                setEmail('julie.martin@cug.edu.gh')
-                setPassword('password123')
-              }}
-            >
-              Julie Martin (CUG)
-            </button>
-            <button
-              type="button"
-              className="autofill-chip"
-              onClick={() => {
-                setEmail('kofi.mensah@gmail.com')
-                setPassword('password123')
-              }}
-            >
-              Kofi Mensah (Sunyani)
-            </button>
-          </div>
-
           <label className="input-field-wrap">
             <span>Email Address</span>
             <input
@@ -1480,7 +1445,7 @@ export function SignIn() {
             <button
               type="button"
               className="btn-forgot-pass"
-              onClick={() => say('Password reset link sent to ' + (email || 'your email'))}
+              onClick={() => say('Password recovery is not configured yet. Contact Lady 3D’s support team.')}
             >
               Forgot password?
             </button>
@@ -1504,14 +1469,14 @@ export function SignIn() {
 
 // 9. Sign Up Page
 export function SignUp() {
-  const { user, loginUser, setGoogleModal, say, branch } = useApp()
+  const { user, loginUser, say, branch } = useApp()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [selectedBranch, setSelectedBranch] = useState(branch || 'cug')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [agreed, setAgreed] = useState(true)
+  const [agreed, setAgreed] = useState(false)
 
   if (user) {
     return (
@@ -1532,19 +1497,11 @@ export function SignUp() {
     if (!name.trim()) return say('Please enter your full name')
     if (!email.trim() || !email.includes('@')) return say('Please enter a valid email address')
     if (!phone.trim() || phone.length < 9) return say('Please enter a valid 10-digit phone number')
-    if (!password || password.length < 4) return say('Please choose a password (at least 4 characters)')
+    if (!password || password.length < 10) return say('Use a password with at least 10 characters')
     if (!agreed) return say('Please agree to terms to register')
-
-    loginUser({
-      name: name.trim(),
-      email: email.trim(),
-      phone: phone.trim(),
-      branch: selectedBranch,
-      googleAuth: false,
-      avatar: ''
-    })
-    say('Account created! Code WELCOME20 is ready to use.')
-    go('/account')
+    api('/auth/signup', { method: 'POST', body: JSON.stringify({ name, email, phone, branch: selectedBranch, password }) })
+      .then(({ user: account }) => { loginUser(account); say('Your account is ready.'); go('/account') })
+      .catch(error => say(error.message))
   }
 
   return (
@@ -1558,18 +1515,6 @@ export function SignUp() {
           <span className="auth-promo-pill">20% WELCOME VOUCHER</span>
           <h1 className="auth-title">Create Account</h1>
           <p className="auth-subtitle">Join the Lady 3D Food Club for campus delivery, loyalty points and free meals.</p>
-        </div>
-
-        {/* Google Sign Up Button */}
-        <div className="social-auth-section">
-          <button
-            type="button"
-            className="btn-google-auth"
-            onClick={() => setGoogleModal(true)}
-          >
-            <GoogleIcon />
-            <span>Sign up with Google</span>
-          </button>
         </div>
 
         <div className="auth-divider-line">
@@ -1669,8 +1614,10 @@ export function SignUp() {
 
 // 10. Modern Account / Profile Screen (Bon Appétit Screen 5)
 export function Account() {
-  const { user, logoutUser, orders, favs, menu, points, say, canInstall, installPwa } = useApp()
+  const { user, logoutUser, orders, favs, menu, points, say, canInstall, installPwa, updateProfile } = useApp()
   const [tab, setTab] = useState('orders')
+  const [profile, setProfile] = useState({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '', branch: user?.branch || 'cug' })
+  useEffect(() => setProfile({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '', branch: user?.branch || 'cug' }), [user])
 
   if (!user) {
     return <SignIn />
@@ -1692,11 +1639,6 @@ export function Account() {
           <span className="profile-user-email">{user.email}</span>
           <div className="profile-badges-row">
             <span className="profile-tag-badge">Lady 3D Food Club VIP</span>
-            {user.googleAuth && (
-              <span className="profile-google-badge">
-                <GoogleIcon /> Google Verified
-              </span>
-            )}
           </div>
         </div>
         <button className="btn-logout" onClick={logoutUser} title="Sign out">
@@ -1838,17 +1780,18 @@ export function Account() {
         <div className="account-settings-card">
           <label className="input-field-wrap">
             <span>Name</span>
-            <input defaultValue={user.name} />
+            <input value={profile.name} onChange={e => setProfile({ ...profile, name: e.target.value })} />
           </label>
           <label className="input-field-wrap">
-            <span>Email</span>
-            <input defaultValue={user.email} />
+            <span>Email (cannot be changed here)</span>
+            <input value={profile.email} readOnly />
           </label>
+          <label className="input-field-wrap"><span>Phone</span><input value={profile.phone} onChange={e => setProfile({ ...profile, phone: e.target.value })} /></label>
           <label className="input-field-wrap">
             <span>Preferred Branch</span>
-            <BranchPicker />
+            <select value={profile.branch} onChange={e => setProfile({ ...profile, branch: e.target.value })}><option value="cug">Catholic University (Campus Annex)</option><option value="sunyani">Sunyani (Main Branch)</option></select>
           </label>
-          <button className="btn-order-cta" onClick={() => say('Profile updated successfully')}>
+          <button className="btn-order-cta" onClick={() => updateProfile({ name: profile.name, phone: profile.phone, branch: profile.branch }).then(() => say('Profile updated.')).catch(error => say(error.message))}>
             Save Changes
           </button>
         </div>

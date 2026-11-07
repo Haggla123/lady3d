@@ -1,9 +1,16 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import { MENU, SEED_ORDERS, REVIEWS, PROMO_CODES, priceAt } from './data.js'
+import { MENU, REVIEWS, PROMO_CODES, priceAt } from './data.js'
 
 const Ctx = createContext()
 export const useApp = () => useContext(Ctx)
 export const money = n => 'GH₵' + Number(n).toFixed(2).replace(/\.00$/, '')
+export const api = async (path, options = {}) => {
+  const base = import.meta.env.VITE_API_URL || ''
+  const response = await fetch(`${base}/api${path}`, { credentials: 'include', ...options, headers: { 'Content-Type': 'application/json', ...options.headers } })
+  const data = response.status === 204 ? null : await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(data?.error || `Request failed (${response.status})`)
+  return data
+}
 
 export function useHash() {
   const [h, setH] = useState(location.hash.slice(1) || '/')
@@ -28,18 +35,11 @@ export function AppProvider({ children }) {
   const [branch, setBranch] = useState('cug') // default to CUG Annex for instant convenient browsing
   const [orderType, setOrderType] = useState('delivery') // 'delivery' | 'pickup'
   const [cart, setCart] = useState([])
-  const [orders, setOrders] = useState(SEED_ORDERS)
+  const [orders, setOrders] = useState([])
   
-  // Persistent user state with Google auth support
-  const [user, setUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem('lady3d-user')
-      if (saved) return JSON.parse(saved)
-    } catch (e) {}
-    return null
-  })
+  // Customer sessions are verified by the API.
+  const [user, setUser] = useState(null)
   
-  const [googleModal, setGoogleModal] = useState(false)
   const [favs, setFavs] = useState([1, 2])
   const [points, setPoints] = useState(38)
   const [reviews, setReviews] = useState(REVIEWS)
@@ -52,26 +52,71 @@ export function AppProvider({ children }) {
   ])
   const [promoCode, setPromoCode] = useState('WELCOME20')
   const [promoError, setPromoError] = useState('')
-  const [role, setRole] = useState('Owner')
+  const [role, setRole] = useState(null)
   const [activeFood, setActiveFood] = useState(null)
   const [deviceFrame, setDeviceFrame] = useState(false) // Toggle phone frame preview
   const [deferredPrompt, setDeferredPrompt] = useState(null)
   const [canInstall, setCanInstall] = useState(false)
+  const [staffUser, setStaffUser] = useState(null)
+  const [authReady, setAuthReady] = useState(false)
+  const [momoEnabled, setMomoEnabled] = useState(false)
 
-  const [staff, setStaff] = useState([
-    { id: 1, name: 'Lady 3D (Lead Caterer)', role: 'Owner', branch: 'all', phone: '024 465 0474', active: true },
-    { id: 2, name: 'Esi (Kitchen Supervisor)', role: 'Manager', branch: 'cug', phone: '053 129 9243', active: true },
-    { id: 3, name: 'Kwame (Cashier & Counter)', role: 'Cashier', branch: 'sunyani', phone: '027 691 3089', active: true },
-    { id: 4, name: 'Adwoa (Line Chef & Prep)', role: 'Kitchen Chef', branch: 'cug', phone: '053 129 9243', active: true }
-  ])
+  useEffect(() => {
+    let alive = true
+    const initialize = async () => {
+      try {
+        const config = await api('/public/config')
+        if (alive) setMomoEnabled(Boolean(config.momoEnabled))
+        const bootstrap = await api('/public/bootstrap')
+        if (alive && bootstrap.menu?.length) setMenu(bootstrap.menu)
+        if (alive && bootstrap.reviews) setReviews(bootstrap.reviews)
+        if (alive && bootstrap.promos?.length) setPromos(bootstrap.promos)
+        if (alive && bootstrap.branches?.length) setBranchStatus(Object.fromEntries(bootstrap.branches.map(b => [b.id, b])))
+      } catch (error) { console.error('Could not load public app data:', error.message) }
+      try {
+        const { user: session } = await api('/auth/me')
+        if (!alive) return
+        if (session.role === 'customer') {
+          setUser(session)
+          const { orders: mine } = await api('/my/orders')
+          if (alive) setOrders(mine || [])
+        }
+        else {
+          setStaffUser(session)
+          setRole(session.role)
+          const [{ orders: currentOrders }, { state }] = await Promise.all([api('/admin/orders'), api('/admin/state')])
+          if (!alive) return
+          setOrders(currentOrders || [])
+          if (state.menu) setMenu(state.menu)
+          if (state.cats) setCats(state.cats)
+          if (state.branchStatus) setBranchStatus(state.branchStatus)
+          if (state.promos) setPromos(state.promos)
+          if (state.staff) setStaff(state.staff)
+          if (state.customers) setCustomers(state.customers)
+          if (state.loyaltyRules) setLoyaltyRules(state.loyaltyRules)
+          if (state.settings) setSettings(state.settings)
+          if (state.votes) setVotes(state.votes)
+        }
+      } catch { /* Public browsing is allowed; staff operations require a server session. */ }
+      if (alive) setAuthReady(true)
+    }
+    initialize()
+    return () => { alive = false }
+  }, [])
 
-  const [customers, setCustomers] = useState([
-    { id: 1, name: 'Kofi Mensah', phone: '027 691 3089', branch: 'cug', ordersCount: 14, spent: 480, points: 48, status: 'VIP Member' },
-    { id: 2, name: 'Ama Boateng', phone: '053 129 9243', branch: 'cug', ordersCount: 9, spent: 315, points: 31, status: 'Regular' },
-    { id: 3, name: 'Yaw Manu', phone: '024 465 0474', branch: 'sunyani', ordersCount: 6, spent: 270, points: 27, status: 'Regular' },
-    { id: 4, name: 'Julie Martin', phone: '024 123 4567', branch: 'cug', ordersCount: 4, spent: 160, points: 16, status: 'New Customer' },
-    { id: 5, name: 'Efua Mensah', phone: '055 987 6543', branch: 'sunyani', ordersCount: 8, spent: 390, points: 39, status: 'Regular' }
-  ])
+  useEffect(() => {
+    if (!authReady || !staffUser) return
+    let active = true
+    const refreshOrders = () => api('/admin/orders')
+      .then(({ orders: currentOrders }) => { if (active) setOrders(currentOrders || []) })
+      .catch(() => {})
+    const timer = setInterval(refreshOrders, 15000)
+    return () => { active = false; clearInterval(timer) }
+  }, [authReady, staffUser])
+
+  const [staff, setStaff] = useState([])
+
+  const [customers, setCustomers] = useState([])
 
   const [loyaltyRules, setLoyaltyRules] = useState({
     spendPerPoint: 10,
@@ -125,30 +170,15 @@ export function AppProvider({ children }) {
 
   const loginUser = userData => {
     setUser(userData)
-    try {
-      localStorage.setItem('lady3d-user', JSON.stringify(userData))
-    } catch (e) {}
+    api('/my/orders').then(({ orders: mine }) => setOrders(mine || [])).catch(() => {})
     say(`Welcome back, ${userData.name}!`)
   }
 
   const logoutUser = () => {
     setUser(null)
-    try {
-      localStorage.removeItem('lady3d-user')
-    } catch (e) {}
+    setOrders([])
+    api('/auth/logout', { method: 'POST' }).catch(() => {})
     say('You have been logged out.')
-  }
-
-  const loginGoogle = (googleAccount) => {
-    const acc = googleAccount || {
-      name: 'Julie Martin',
-      email: 'julie.martin@cug.edu.gh',
-      phone: '0241234567',
-      googleAuth: true,
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80'
-    }
-    loginUser(acc)
-    setGoogleModal(false)
   }
 
   const price = it => priceAt(it, branch || 'cug')
@@ -241,36 +271,57 @@ export function AppProvider({ children }) {
     })
   }
 
-  const place = f => {
-    const ref = 'L3D-' + Math.random().toString(36).slice(2, 7).toUpperCase()
-    const o = {
-      ref,
-      items: lines.map(l => ({
-        id: l.id,
-        name: l.it.name,
-        qty: l.qty,
-        unitPrice: l.unitPrice,
-        price: l.unitPrice,
-        img: l.it.img,
-        extras: (l.extrasList || []).map(e => ({ name: e.name, price: e.price }))
-      })),
-      subtotal,
-      discount,
-      deliveryFee,
-      total,
-      branch: branch || 'cug',
-      orderType,
-      ...f,
-      paid: false,
-      status: 0,
-      mine: true,
-      time: new Date().toTimeString().slice(0, 5)
-    }
-    setOrders(os => [o, ...os])
+  const place = async f => {
+    const result = await api('/orders', { method: 'POST', body: JSON.stringify({
+      items: lines.map(l => ({ id: l.id, qty: l.qty, extras: (l.extrasList || []).map(e => e.id) })),
+      branch: branch || 'cug', orderType, name: f.name, phone: f.phone, address: orderType === 'delivery' ? f.address : undefined,
+      note: f.note, promoCode, pay: f.pay
+    }) })
     setCart([])
-    say(`Order ${ref} placed successfully!`)
-    return ref
+    say(result.message || `Order ${result.order.ref} received.`)
+    if (result.checkoutUrl) window.location.assign(result.checkoutUrl)
+    setOrders(os => [result.order, ...os])
+    if (f.pay === 'momo' && !result.checkoutUrl) go(`/track/${result.order.ref}`)
+    return result.order.ref
   }
+
+  const staffLogin = async (email, password) => {
+    const { user: session } = await api('/auth/staff-login', { method: 'POST', body: JSON.stringify({ email, password }) })
+    setStaffUser(session)
+    setRole(session.role)
+    const [{ orders: currentOrders }, { state }] = await Promise.all([api('/admin/orders'), api('/admin/state')])
+    setOrders(currentOrders || [])
+    if (state.menu) setMenu(state.menu)
+    if (state.cats) setCats(state.cats)
+    if (state.branchStatus) setBranchStatus(state.branchStatus)
+    if (state.promos) setPromos(state.promos)
+    if (state.staff) setStaff(state.staff)
+    if (state.customers) setCustomers(state.customers)
+    if (state.loyaltyRules) setLoyaltyRules(state.loyaltyRules)
+    if (state.settings) setSettings(state.settings)
+    if (state.votes) setVotes(state.votes)
+    return session
+  }
+  const staffLogout = async () => { await api('/auth/logout', { method: 'POST' }); setStaffUser(null); setOrders([]) }
+  const updateProfile = async profile => {
+    const { user: account } = await api('/auth/profile', { method: 'PUT', body: JSON.stringify(profile) })
+    setUser(account)
+    return account
+  }
+
+  const persistState = (key, setter, current) => nextOrUpdater => {
+    const next = typeof nextOrUpdater === 'function' ? nextOrUpdater(current) : nextOrUpdater
+    setter(next)
+    if (staffUser) api(`/admin/state/${key}`, { method: 'PUT', body: JSON.stringify({ value: next }) }).catch(error => say(error.message))
+  }
+  const saveMenu = persistState('menu', setMenu, menu)
+  const saveCats = persistState('cats', setCats, cats)
+  const saveBranchStatus = persistState('branchStatus', setBranchStatus, branchStatus)
+  const savePromos = persistState('promos', setPromos, promos)
+  const saveStaff = persistState('staff', setStaff, staff)
+  const saveCustomers = persistState('customers', setCustomers, customers)
+  const saveLoyaltyRules = persistState('loyaltyRules', setLoyaltyRules, loyaltyRules)
+  const saveSettings = persistState('settings', setSettings, settings)
 
   const setStatus = (ref, s) => {
     const o = orders.find(x => x.ref === ref)
@@ -285,31 +336,34 @@ export function AppProvider({ children }) {
   const markPaid = ref => setOrders(os => os.map(x => x.ref === ref ? { ...x, paid: true } : x))
 
   const v = {
-    menu, setMenu,
-    cats, setCats,
+    menu, setMenu: saveMenu,
+    cats, setCats: saveCats,
     branch, setBranch,
     orderType, setOrderType,
     cart, add, setQty, lines,
     subtotal, discount, deliveryFee, total, count,
     price, ok,
-    place, orders, setOrders, setStatus, markPaid,
-    branchStatus, setBranchStatus,
-    user, setUser, loginUser, logoutUser, loginGoogle, googleModal, setGoogleModal,
+    place, orders, setOrders,
+    setStatus: (ref, s) => api(`/admin/orders/${ref}/status`, { method: 'PATCH', body: JSON.stringify({ status: s }) }).then(({ order }) => setOrders(os => os.map(o => o.ref === ref ? order : o))).catch(error => say(error.message)),
+    markPaid: ref => api(`/admin/orders/${ref}/payment`, { method: 'PATCH' }).then(({ order }) => setOrders(os => os.map(o => o.ref === ref ? order : o))).catch(error => say(error.message)),
+    branchStatus, setBranchStatus: saveBranchStatus,
+    user, setUser, loginUser, logoutUser,
     favs, setFavs, toggleFav,
     points, setPoints,
     reviews, setReviews,
     votes, setVotes, voted, setVoted,
     toast, say,
-    promos, setPromos,
+    promos, setPromos: savePromos,
     promoCode, setPromoCode, promoError, applyPromo, removePromo,
     role, setRole,
     activeFood, setActiveFood,
     deviceFrame, setDeviceFrame,
     canInstall, installPwa,
-    staff, setStaff,
-    customers, setCustomers,
-    loyaltyRules, setLoyaltyRules,
-    settings, setSettings
+    staff, setStaff: saveStaff,
+    customers, setCustomers: saveCustomers,
+    loyaltyRules, setLoyaltyRules: saveLoyaltyRules,
+    settings, setSettings: saveSettings,
+    staffUser, staffLogin, staffLogout, authReady, api, momoEnabled, updateProfile
   }
 
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>

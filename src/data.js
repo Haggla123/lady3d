@@ -302,17 +302,7 @@ export const PROMO_CODES = {
 
 export const priceAt = (it, b) => it.prices?.[b] ?? it.price
 
-export const SEED_ORDERS = [
-  { ref: 'L3D-7K2QA', items: [{ id: 1, name: 'Waakye Special', qty: 2, price: 30 }], total: 60, branch: 'cug', name: 'Kofi A.', phone: '0276913089', pay: 'momo', paid: true, status: 4, time: '08:42' },
-  { ref: 'L3D-9PX4M', items: [{ id: 2, name: 'Jollof & Grilled Chicken', qty: 1, price: 35 }, { id: 15, name: 'Sobolo Chilled Drink (500ml)', qty: 1, price: 10 }], total: 45, branch: 'cug', name: 'Ama B.', phone: '0531299243', pay: 'cash', paid: false, status: 2, time: '12:10' },
-  { ref: 'L3D-3TR8D', items: [{ id: 8, name: 'Banku & Grilled Tilapia with Hot Pepper', qty: 1, price: 45 }], total: 45, branch: 'sunyani', name: 'Yaw M.', phone: '0244650474', pay: 'momo', paid: false, status: 0, time: '12:31' },
-]
-
-export const REVIEWS = [
-  { id: 1, who: 'Efua Mensah (CUG Student)', stars: 5, text: 'Waakye on plantain leaf is always steaming hot! Shito and fried plantain are just perfect between lectures.', show: true, time: 'Yesterday' },
-  { id: 2, who: 'Nana Kwame (Fiapre Campus)', stars: 5, text: 'The fried rice with whole tilapia from the flyer is legendary. Generous student portion and great price.', show: true, time: '2 days ago' },
-  { id: 3, who: 'Julie Martin (Sunyani Main)', stars: 5, text: 'The Yam Ampesi and Kontomire palava sauce at the main branch is unmatched in Sunyani. Real home cooking.', show: true, time: '3 days ago' },
-]
+export const REVIEWS = []
 
 export const ROLES = {
   Owner: ['overview', 'orders', 'branch-dashboards', 'menu', 'categories', 'branches', 'customers', 'loyalty', 'promos', 'payments', 'analytics', 'reviews', 'staff', 'settings'],
