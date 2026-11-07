@@ -862,16 +862,53 @@ export function Checkout() {
                   className={`cart-mode-btn ${orderType === 'delivery' ? 'active' : ''}`}
                   onClick={() => setOrderType('delivery')}
                 >
-                  🛵 Campus Delivery
+                  🛵 Campus / Town Delivery
                 </button>
                 <button
                   type="button"
-                  className={`cart-mode-btn ${orderType === 'pickup' ? 'active' : ''}`}
-                  onClick={() => setOrderType('pickup')}
+                  className={`cart-mode-btn ${orderType === 'collection' ? 'active' : ''}`}
+                  onClick={() => setOrderType('collection')}
                 >
-                  🥡 Counter Pickup
+                  🥡 Counter Collection
                 </button>
               </div>
+
+              {orderType === 'delivery' && (
+                <div style={{ marginTop: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, marginBottom: '6px', color: '#1e293b' }}>
+                    Approved Delivery Zone & Rate:
+                  </label>
+                  <select
+                    value={useApp().selectedZoneId}
+                    onChange={e => useApp().setSelectedZoneId(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1.5px solid #cbd5e1', fontSize: '14px', background: '#fff', fontWeight: 600 }}
+                  >
+                    {useApp().deliveryZones.filter(z => z.branchId === branch && z.active).map(zone => (
+                      <option key={zone.id} value={zone.id}>
+                        {zone.name} (+{money(zone.fee)} delivery fee · {zone.estimatedMinutes})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {orderType === 'collection' && (
+                <div style={{ marginTop: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, marginBottom: '6px', color: '#1e293b' }}>
+                    Desired Pickup Time:
+                  </label>
+                  <select
+                    value={f.collectionTime || 'ASAP'}
+                    onChange={e => setF({ ...f, collectionTime: e.target.value })}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1.5px solid #cbd5e1', fontSize: '14px', background: '#fff', fontWeight: 600 }}
+                  >
+                    <option value="ASAP">As soon as prepared (15-20 mins)</option>
+                    <option value="In 30 minutes">In 30 minutes</option>
+                    <option value="In 45 minutes">In 45 minutes</option>
+                    <option value="In 1 hour">In 1 hour</option>
+                  </select>
+                </div>
+              )}
             </div>
 
             {/* Step 1 Section: Contact & Delivery Info */}
@@ -1285,12 +1322,58 @@ export function Track({ refId }) {
             <div>
               <span className="order-ref-label">Order Reference</span>
               <h2 className="order-ref-code">{order.ref}</h2>
-              <span className="order-time-stamp">Placed at {order.time || '12:30'}</span>
+              <span className="order-time-stamp">
+                Fulfilment: <b>{order.orderType === 'delivery' ? '🛵 Delivery' : '🥡 Collection'}</b> ({order.branch?.toUpperCase()})
+              </span>
             </div>
-            <div className={`order-paid-status ${order.paid ? 'paid' : 'pending'}`}>
-              {order.paid ? '✓ Paid' : order.pay === 'momo' ? 'MoMo Pending' : 'Pay at Counter'}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
+              <div className={`order-paid-status ${order.paid || order.paymentStatus === 'paid' ? 'paid' : 'pending'}`}>
+                Payment: {order.paymentStatus ? order.paymentStatus.toUpperCase() : (order.paid ? 'PAID' : 'PENDING')}
+              </div>
+              <span style={{ fontSize: '11px', color: '#64748b' }}>Method: {order.pay?.toUpperCase()}</span>
             </div>
           </div>
+
+          {/* Three Separate Status Pillars */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', background: '#f8fafc', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0', margin: '14px 0' }}>
+            <div>
+              <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>1. Kitchen / Order Status</div>
+              <div style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                {order.orderStatus ? order.orderStatus.replace(/_/g, ' ').toUpperCase() : STATUSES[order.status]?.label}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>2. Payment Status</div>
+              <div style={{ fontSize: '14px', fontWeight: 800, color: order.paymentStatus === 'paid' || order.paid ? '#10b981' : '#f59e0b', marginTop: '2px' }}>
+                {(order.paymentStatus || (order.paid ? 'paid' : 'pending')).toUpperCase()}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>3. Fulfilment & Delivery</div>
+              <div style={{ fontSize: '14px', fontWeight: 800, color: '#0284c7', marginTop: '2px' }}>
+                {order.orderType === 'delivery'
+                  ? (order.deliveryStatus ? order.deliveryStatus.replace(/_/g, ' ').toUpperCase() : 'IN PROGRESS')
+                  : 'READY FOR COUNTER PICKUP'}
+              </div>
+            </div>
+          </div>
+
+          {/* Assigned Driver Notification if delivery */}
+          {order.orderType === 'delivery' && order.deliveryAssignment?.driverName && (
+            <div style={{ background: '#e0f2fe', border: '1px solid #bae6fd', borderRadius: '8px', padding: '12px', margin: '12px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <b style={{ color: '#0369a1', fontSize: '14px' }}>🛵 Assigned Dispatch Rider: {order.deliveryAssignment.driverName}</b>
+                <div style={{ fontSize: '12px', color: '#0c4a6e', marginTop: '2px' }}>
+                  Your food has been assigned to an authorized delivery rider.
+                </div>
+              </div>
+              {order.deliveryAssignment.driverPhone && (
+                <a href={`tel:${order.deliveryAssignment.driverPhone}`} className="btn-call-driver" style={{ background: '#0284c7', color: '#fff', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', textDecoration: 'none', fontWeight: 700 }}>
+                  Call Rider
+                </a>
+              )}
+            </div>
+          )}
 
           <div className="live-progress-flow">
             {STATUSES.map((step, idx) => {
@@ -1716,6 +1799,22 @@ export function Account() {
       {/* Tab Panels */}
       {tab === 'orders' && (
         <div className="account-orders-list">
+          {/* Guest Order Claiming Banner */}
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '14px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div>
+              <b style={{ color: '#166534', fontSize: '14px' }}>Placed orders as a guest earlier?</b>
+              <div style={{ fontSize: '12px', color: '#15803d', marginTop: '2px' }}>
+                Link previous orders placed with phone number <b>{user.phone}</b> to your registered account.
+              </div>
+            </div>
+            <button
+              onClick={() => useApp().claimGuestOrders()}
+              style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+            >
+              Claim Previous Orders
+            </button>
+          </div>
+
           {mine.length > 0 ? (
             mine.map(o => (
               <div key={o.ref} className="account-order-item-card">

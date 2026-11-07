@@ -1,71 +1,140 @@
-# Lady 3D’s Catering Services Web App & Branch Dashboards
+# Lady 3D’s Catering Services Platform
 
-Official web application, kitchen management portal, and branch consoles for **Lady 3D’s Catering Services** in Sunyani, Ghana.
+Official enterprise web application, kitchen management portal, delivery operations hub, and branch consoles for **Lady 3D’s Catering Services** in Sunyani, Ghana.
 
 - **Catholic University of Ghana Annex (Fiapre Campus)**: Student & faculty packs, campus hall delivery, and quick takeaway.
 - **Sunyani Main Branch (Market Circle)**: Full local & continental dishes, counter POS, and town catering.
 
 ---
 
-## 🚀 Deploy to Vercel
+## 🏗️ Architecture & Core Operational Rules
 
-The customer frontend can be deployed to Vercel. Real ordering and staff operations also require the Express API, MongoDB, and (for Mobile Money) configured Hubtel credentials; these are not hosted by the static Vercel frontend configuration alone.
+The platform follows a modular, feature-driven architecture backed by MongoDB with 4 interconnected role-specific interfaces:
 
-### Option 1: Via Vercel Web Dashboard (Recommended)
-1. Push this repository to GitHub, GitLab, or Bitbucket.
-2. Go to [vercel.com/new](https://vercel.com/new).
-3. Import this repository.
-4. Vercel will automatically detect the settings:
-   - **Framework Preset**: `Vite`
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `dist`
-   - **Install Command**: `npm install`
-5. Configure `VITE_API_URL` to point to a deployed API and configure the server environment variables described in `.env.example`. Without a reachable API, account, ordering, and operations features will not work.
+### 1. The 4 Interconnected Interfaces
+1. **Customer Platform (`/#/`)**:
+   - Menu browsing, meal customization with extras.
+   - Separate **Collection** vs. **Delivery** checkout.
+   - Traceable **Guest Checkout** and registered customer profiles.
+   - Live 3-pillar order tracking (`/#/track/:ref`).
+   - Claim past guest orders after creating an account.
+2. **Kitchen & Staff Portal (`/#/kitchen`)**:
+   - Live order display with dual-tone Web Audio chimes for new confirmed orders.
+   - Auto-advance orders: *Confirmed* → *Cooking/Preparing* → *Ready for Collection / Ready for Dispatch*.
+   - **Live Daily Stock & Portions Management**: view Prepared, Reserved, Sold, and Remaining portions; update cooked amounts or mark sold out on the fly.
+3. **Delivery Operations Hub (`/#/delivery`)**:
+   - Rider dispatching and self-assignment.
+   - Delivery zone and fee configuration.
+   - Status tracking (*Awaiting Assignment* → *Picked Up* → *In Transit* → *Delivered* / *Failed Delivery* with issue reports).
+4. **Management Dashboard (`/#/admin` & `/#/branch/:branch`)**:
+   - Cross-branch access for Central Administrator (Owner).
+   - Scoped branch access for Branch Managers.
+   - Staff roles, capacity limits, emergency order pausing, sales analytics, and audit history.
 
-### Option 2: Via Vercel CLI
-```bash
-# 1. Install Vercel CLI globally
-npm i -g vercel
+---
 
-# 2. Deploy directly from the project root
-vercel
+### 2. The 3 Independent State Machines
 
-# 3. Deploy to production
-vercel --prod
+Order status, payment status, and delivery status are strictly segregated:
+
+| State Machine | Status Values |
+| :--- | :--- |
+| **Order Status** | `pending_payment` · `confirmed` · `preparing` · `ready_for_collection` · `ready_for_dispatch` · `out_for_delivery` · `collected` · `delivered` · `cancelled` · `rejected` |
+| **Payment Status** | `unpaid` · `pending` · `paid` · `failed` · `refunded` · `partially_refunded` |
+| **Delivery Status** | `not_applicable` · `awaiting_assignment` · `assigned` · `awaiting_pickup` · `picked_up` · `in_transit` · `delivered` · `failed_delivery` · `returned` |
+
+---
+
+### 3. Critical Backend Rules Implemented
+
+- **Atomic Stock Reservation**: Checkout checks remaining portions (`prepared - reserved - sold >= requested_qty`) and atomically increments `quantityReserved`. If any portion runs out, previously reserved items rollback and the customer is informed before an unfulfillable order can be accepted.
+- **Automatic Order Acceptance**: Valid orders are confirmed immediately when branch is open, capacity is under limit, delivery zone requirements are met, and stock is reserved. Confirmed orders appear automatically in the kitchen queue.
+- **Guest Tracing & Account Claiming**: Guests receive an order reference and tracking link. Registered customers can claim previous orders placed with their verified phone number.
+- **Separation of Fulfilment**: Delivery has its own zones, delivery fees, minimum order thresholds, and rider assignment workflows independent of pickup.
+
+---
+
+## 📁 Modular Directory Structure
+
+```text
+lady-3ds-platform/
+│
+├── public/
+│   ├── images/
+│   ├── icons/
+│   └── manifest.json
+│
+├── src/
+│   ├── app/
+│   │   ├── routes/
+│   │   ├── providers/
+│   │   └── layouts/
+│   │
+│   ├── components/
+│   │   ├── common/
+│   │   ├── forms/
+│   │   ├── food/
+│   │   ├── orders/
+│   │   └── navigation/
+│   │
+│   ├── features/
+│   │   ├── authentication/
+│   │   ├── branches/
+│   │   ├── menu/
+│   │   ├── cart/
+│   │   ├── checkout/
+│   │   ├── orders/
+│   │   ├── payments/
+│   │   ├── delivery/
+│   │   ├── inventory/
+│   │   ├── loyalty/
+│   │   ├── promotions/
+│   │   ├── reviews/
+│   │   ├── customers/
+│   │   ├── staff/
+│   │   └── analytics/
+│   │
+│   ├── pages/
+│   │   ├── customer/
+│   │   ├── admin/
+│   │   ├── manager/
+│   │   ├── kitchen/
+│   │   └── delivery/
+│   │
+│   ├── services/
+│   │   ├── api/
+│   │   ├── payments/
+│   │   └── notifications/
+│   │
+│   ├── hooks/
+│   ├── utils/
+│   ├── styles/
+│   └── main.jsx
+│
+├── server/
+│   ├── auth.js
+│   ├── index.js
+│   ├── models.js
+│   └── seed.js
+│
+└── README.md
 ```
 
 ---
 
-## 🛠️ Local Development
+## 🛠️ Local Development & Seeding
 
 ```bash
-# Install dependencies
+# 1. Install dependencies
 npm install
 
-# Start local development server
-npm run dev
+# 2. Configure environment
+cp .env.example .env
 
-# Test production build
-npm run build
-npm run preview
+# 3. Seed initial menu, delivery zones, daily portions, and demo staff accounts
+npm run seed
+
+# 4. Start frontend and backend
+npm run dev      # Frontend at http://localhost:5173
+npm run server   # API at http://localhost:4000
 ```
-
-The API requires Node.js 20.19+, MongoDB, and a local `.env` based on `.env.example`. Run it with `npm run server`. Seed an initial owner only after setting `SEED_OWNER_EMAIL` and `SEED_OWNER_PASSWORD` in `.env`, then run `npm run seed`. Keep the API and database on trusted infrastructure and use HTTPS in production.
-
----
-
-## 📍 Key Application Routes
-
-- `/#/`: Customer Ordering Web App (Browse local dishes, add extras, checkout, and live order tracking).
-- `/#/menu`: Full browsable menu categorized by branch availability.
-- `/#/admin`: Master Admin Dashboard (13 operational tabs with static red & white sidebar, kitchen kanban, staff roster, daily stock, and sales reports).
-- `/#/branch/sunyani`: **Sunyani (Main Branch) Console** (Locked exclusively to Sunyani branch operations, counter POS, kitchen queue, and cash drawer).
-- `/#/branch/cug`: **Catholic University (Campus Annex) Console** (Locked exclusively to CUG campus operations, campus hall deliveries, and student orders).
-
----
-
-## 📋 Vercel Configuration Highlights
-
-- `vercel.json`: Handles client-side SPA fallback routes (`/(.*) -> /index.html`) so refreshing on any sub-route never throws a 404.
-- `.gitignore`: Prevents committing `node_modules`, `dist`, `.vercel`, and system files.
-- `public/manifest.json` & PWA support: Progressive Web App installable on iOS and Android devices.

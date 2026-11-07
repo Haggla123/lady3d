@@ -4,6 +4,8 @@ import { Link, Wordmark, BranchPicker, BottomNavBar, MobileTopNav, FoodDetailMod
 import { Onboarding, Home, Menu, FoodPage, Cart, Checkout, OrderSuccess, Track, Account, Community, SignIn, SignUp } from './pages/Customer.jsx'
 import Admin from './pages/Admin.jsx'
 import BranchDashboard from './pages/BranchDashboard.jsx'
+import KitchenDashboard from './pages/kitchen/KitchenDashboard.jsx'
+import DeliveryDashboard from './pages/delivery/DeliveryDashboard.jsx'
 
 function StaffLoginPage() {
   const { staffLogin, say } = useApp()
@@ -40,6 +42,30 @@ export default function App() {
     }, 1500)
     return () => clearTimeout(timer)
   }, [])
+
+  // If user accesses /kitchen directly
+  if (seg[0] === 'kitchen') {
+    if (!authReady) return <div className="wrap sec">Checking kitchen session…</div>
+    if (!staffUser) return <><StaffLoginPage />{toast && <div className="toast-pill">{toast}</div>}</>
+    return (
+      <>
+        <KitchenDashboard branchId={seg[1] || staffUser.assignedBranch || 'cug'} />
+        {toast && <div className="toast-pill">{toast}</div>}
+      </>
+    )
+  }
+
+  // If user accesses /delivery directly
+  if (seg[0] === 'delivery') {
+    if (!authReady) return <div className="wrap sec">Checking rider session…</div>
+    if (!staffUser) return <><StaffLoginPage />{toast && <div className="toast-pill">{toast}</div>}</>
+    return (
+      <>
+        <DeliveryDashboard branchId={seg[1] || staffUser.assignedBranch || 'all'} />
+        {toast && <div className="toast-pill">{toast}</div>}
+      </>
+    )
+  }
 
   // If user accesses /admin directly
   if (seg[0] === 'admin') {

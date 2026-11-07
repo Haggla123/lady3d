@@ -34,6 +34,49 @@ export const STATUSES = [
   { label: 'Collected', desc: 'Order completed and delivered', step: '5' },
 ]
 
+export const ORDER_STATUS_MAP = {
+  pending_payment: { label: 'Pending Payment', desc: 'Awaiting required payment', step: 1, color: '#f59e0b' },
+  confirmed: { label: 'Confirmed', desc: 'Accepted by the system', step: 2, color: '#3b82f6' },
+  preparing: { label: 'Preparing', desc: 'Kitchen is preparing food', step: 3, color: '#8b5cf6' },
+  ready_for_collection: { label: 'Ready for Collection', desc: 'Food is packed and ready for pickup', step: 4, color: '#10b981' },
+  ready_for_dispatch: { label: 'Ready for Dispatch', desc: 'Food is packed and awaiting rider dispatch', step: 4, color: '#06b6d4' },
+  out_for_delivery: { label: 'Out for Delivery', desc: 'Rider has collected the food', step: 4, color: '#f97316' },
+  collected: { label: 'Collected', desc: 'Customer has collected the order', step: 5, color: '#059669' },
+  delivered: { label: 'Delivered', desc: 'Order successfully delivered to customer', step: 5, color: '#059669' },
+  cancelled: { label: 'Cancelled', desc: 'Order has been cancelled', step: 0, color: '#ef4444' },
+  rejected: { label: 'Rejected', desc: 'Order could not be fulfilled', step: 0, color: '#dc2626' }
+}
+
+export const PAYMENT_STATUS_MAP = {
+  unpaid: { label: 'Unpaid', color: '#6b7280' },
+  pending: { label: 'Pending Payment', color: '#f59e0b' },
+  paid: { label: 'Paid', color: '#10b981' },
+  failed: { label: 'Payment Failed', color: '#ef4444' },
+  refunded: { label: 'Refunded', color: '#6366f1' },
+  partially_refunded: { label: 'Partially Refunded', color: '#8b5cf6' }
+}
+
+export const DELIVERY_STATUS_MAP = {
+  not_applicable: { label: 'Not Applicable (Collection)', color: '#6b7280' },
+  awaiting_assignment: { label: 'Awaiting Rider Assignment', color: '#f59e0b' },
+  assigned: { label: 'Rider Assigned', color: '#3b82f6' },
+  awaiting_pickup: { label: 'Awaiting Kitchen Pickup', color: '#8b5cf6' },
+  picked_up: { label: 'Picked Up by Rider', color: '#06b6d4' },
+  in_transit: { label: 'In Transit', color: '#f97316' },
+  delivered: { label: 'Delivered', color: '#10b981' },
+  failed_delivery: { label: 'Delivery Failed', color: '#ef4444' },
+  returned: { label: 'Returned to Kitchen', color: '#b91c1c' }
+}
+
+export const DEFAULT_DELIVERY_ZONES = [
+  { id: 'cug-halls', branchId: 'cug', name: 'Catholic University Hostels & Campus Halls', fee: 5, minOrderValue: 20, estimatedMinutes: '15-25 mins', active: true, description: 'Direct delivery to any hall of residence or faculty block.' },
+  { id: 'cug-fiapre', branchId: 'cug', name: 'Fiapre Town & Surrounding Hostels', fee: 8, minOrderValue: 25, estimatedMinutes: '20-35 mins', active: true, description: 'Private student hostels and residences within Fiapre.' },
+  { id: 'cug-berlin', branchId: 'cug', name: 'Berlin-Top / Fiapre Barrier Area', fee: 10, minOrderValue: 35, estimatedMinutes: '25-40 mins', active: true, description: 'Fiapre outskirts and boundary zones.' },
+  { id: 'sun-market', branchId: 'sunyani', name: 'Sunyani Central / Market Circle Area', fee: 6, minOrderValue: 20, estimatedMinutes: '15-25 mins', active: true, description: 'Commercial core, Market circle, and nearby offices.' },
+  { id: 'sun-residential', branchId: 'sunyani', name: 'Sunyani Residential Areas (Area 1, 2, 3, 4)', fee: 10, minOrderValue: 30, estimatedMinutes: '25-35 mins', active: true, description: 'Residential estates and government residential areas.' },
+  { id: 'sun-airport', branchId: 'sunyani', name: 'Sunyani Airport / Kotokrom / Penkwase', fee: 12, minOrderValue: 40, estimatedMinutes: '30-45 mins', active: true, description: 'Penkwase and town extensions.' }
+]
+
 const a = (c = true, s = true) => ({ cug: c, sunyani: s })
 
 // Official Extras as listed on both the Campus Flyer and Main Branch Signboard
@@ -305,14 +348,18 @@ export const priceAt = (it, b) => it.prices?.[b] ?? it.price
 export const REVIEWS = []
 
 export const ROLES = {
-  Owner: ['overview', 'orders', 'branch-dashboards', 'menu', 'categories', 'branches', 'customers', 'loyalty', 'promos', 'payments', 'analytics', 'reviews', 'staff', 'settings'],
-  Manager: ['overview', 'orders', 'branch-dashboards', 'menu', 'categories', 'branches', 'customers', 'loyalty', 'promos', 'reviews'],
+  Owner: ['overview', 'orders', 'delivery', 'inventory', 'branch-dashboards', 'menu', 'categories', 'branches', 'customers', 'loyalty', 'promos', 'payments', 'analytics', 'reviews', 'staff', 'settings'],
+  Manager: ['overview', 'orders', 'delivery', 'inventory', 'branch-dashboards', 'menu', 'categories', 'branches', 'customers', 'loyalty', 'promos', 'reviews'],
+  Kitchen: ['orders', 'inventory'],
+  Driver: ['delivery'],
   Cashier: ['overview', 'orders', 'branch-dashboards'],
 }
 
 export const ADMIN_NAV = [
   ['overview', 'Overview'],
   ['orders', 'Kitchen & Orders'],
+  ['delivery', 'Delivery Operations'],
+  ['inventory', 'Daily Stock & Portions'],
   ['branch-dashboards', 'Branch Dashboards'],
   ['menu', 'Menu'],
   ['categories', 'Categories'],
