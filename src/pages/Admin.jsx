@@ -477,10 +477,19 @@ function Orders() {
                 >
                   WhatsApp Kitchen
                 </a>
-                {o.status < 4 ? (
+                {o.orderStatus === 'pending_payment' ? (
+                  <span className="unpaid-pill">Awaiting Paystack payment</span>
+                ) : o.status === 3 && o.orderType === 'delivery' ? (
+                  <button className="btn-pbd-advance" onClick={() => go('/delivery')}>Open Delivery Desk →</button>
+                ) : o.status < 4 ? (
                   <button
                     className="btn-pbd-advance"
-                    onClick={() => { setStatus(o.ref, o.status + 1); say(`Moved to ${getStatusObj(o.status + 1).label}`) }}
+                    onClick={async () => {
+                      try {
+                        await setStatus(o.ref, o.status + 1)
+                        say(`Moved to ${getStatusObj(o.status + 1).label}`)
+                      } catch { /* The provider already reports the server error. */ }
+                    }}
                   >
                     {getNextActionLabel(o.status)}
                   </button>
@@ -498,26 +507,73 @@ function Orders() {
 
 // 3. Menu Management (Adding Food, Editing Prices, Deleting, Categories)
 function MenuAdmin() {
-  const { menu, setMenu, cats, say } = useApp()
+  const { menu, setMenu, cats, say, api } = useApp()
   const [n, setN] = useState({ name: '', price: '', cat: cats[0] || 'Local Dishes', img: '', desc: '', availCug: true, availSunyani: true })
   const [filterCat, setFilterCat] = useState('All')
   const [searchMeal, setSearchMeal] = useState('')
+  const [editingMeal, setEditingMeal] = useState(null)
+  const [busy, setBusy] = useState(false)
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!n.name.trim() || !n.price) return say('Please enter food name and price')
-    const newMeal = {
-      id: Date.now(),
-      name: n.name.trim(),
-      cat: n.cat,
-      price: +n.price,
-      img: n.img.trim() || 'https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&w=800&q=80',
-      desc: n.desc.trim() || 'Freshly prepared meal with authentic Ghanaian spices',
-      avail: { cug: n.availCug, sunyani: n.availSunyani },
-      prices: {}
+    setBusy(true)
+    try {
+      const payload = {
+        name: n.name.trim(),
+        cat: n.cat,
+        price: +n.price,
+        img: n.img.trim() || 'https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&w=800&q=80',
+        desc: n.desc.trim() || 'Freshly prepared meal with authentic Ghanaian spices',
+        avail: { cug: n.availCug, sunyani: n.availSunyani },
+        prices: { cug: +n.price, sunyani: +n.price }
+      }
+      const res = await api('/admin/menu', { method: 'POST', body: JSON.stringify(payload) })
+      setMenu([res.item || { ...payload, id: Date.now() }, ...menu])
+      setN({ name: '', price: '', cat: cats[0] || 'Local Dishes', img: '', desc: '', availCug: true, availSunyani: true })
+      say(`Dish "${payload.name}" added to menu successfully!`)
+    } catch (err) {
+      say(err.message)
+    } finally {
+      setBusy(false)
     }
-    setMenu([newMeal, ...menu])
-    setN({ name: '', price: '', cat: cats[0] || 'Local Dishes', img: '', desc: '', availCug: true, availSunyani: true })
-    say(`Dish "${newMeal.name}" added to menu successfully!`)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingMeal?.name?.trim() || !editingMeal?.price) return say('Name and price are required')
+    setBusy(true)
+    try {
+      const updateData = {
+        name: editingMeal.name.trim(),
+        cat: editingMeal.cat,
+        price: +editingMeal.price,
+        desc: editingMeal.desc,
+        img: editingMeal.img,
+        avail: editingMeal.avail || { cug: true, sunyani: true },
+        prices: {
+          cug: editingMeal.prices?.cug !== undefined && editingMeal.prices?.cug !== '' ? +editingMeal.prices.cug : +editingMeal.price,
+          sunyani: editingMeal.prices?.sunyani !== undefined && editingMeal.prices?.sunyani !== '' ? +editingMeal.prices.sunyani : +editingMeal.price
+        }
+      }
+      await api('/admin/menu/' + editingMeal.id, { method: 'PUT', body: JSON.stringify(updateData) })
+      setMenu(menu.map(m => m.id === editingMeal.id ? { ...m, ...updateData } : m))
+      say(`Dish "${updateData.name}" updated successfully!`)
+      setEditingMeal(null)
+    } catch (err) {
+      say(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleDelete = async (m) => {
+    if (!confirm(`Are you sure you want to permanently delete "${m.name}" from the menu?`)) return
+    try {
+      await api('/admin/menu/' + m.id, { method: 'DELETE' })
+      setMenu(menu.filter(x => x.id !== m.id))
+      say(`Dish "${m.name}" deleted from menu`)
+    } catch (err) {
+      say(err.message)
+    }
   }
 
   const displayedMenu = menu.filter(m => {
@@ -606,8 +662,8 @@ function MenuAdmin() {
             </label>
           </div>
 
-          <button className="btn-pbd-action" onClick={handleAdd}>
-            + Add Food to Menu
+          <button className="btn-pbd-action" disabled={busy} onClick={handleAdd}>
+            {busy ? 'Saving...' : '+ Add Food to Menu'}
           </button>
         </div>
       </div>
@@ -636,7 +692,7 @@ function MenuAdmin() {
         </div>
 
         <Table
-          head={['Dish Photo', 'Meal Name & Description', 'Category', 'Price (GH₵)', 'Availability', 'Actions']}
+          head={['Dish Photo', 'Meal Name & Description', 'Category', 'Base Price', 'Branch Prices', 'Availability', 'Actions']}
           rows={displayedMenu.map(m => [
             <img
               key="img"
@@ -650,34 +706,183 @@ function MenuAdmin() {
               <small className="muted block">{m.desc?.slice(0, 60)}...</small>
             </div>,
             <span key="c" className="cat-badge-pbd">{m.cat}</span>,
-            <div key="p" className="inline-price-cell">
-              <span>GH₵</span>
-              <input
-                type="number"
-                className="pbd-mini-input"
-                value={m.price}
-                onChange={e => setMenu(menu.map(x => x.id === m.id ? { ...x, price: +e.target.value } : x))}
-              />
+            <div key="p" style={{ fontWeight: 700 }}>
+              GH₵{Number(m.price).toFixed(2)}
+            </div>,
+            <div key="bp" style={{ fontSize: '12px' }}>
+              <div>CUG: <b>GH₵{Number(m.prices?.cug ?? m.price).toFixed(2)}</b></div>
+              <div>Sunyani: <b>GH₵{Number(m.prices?.sunyani ?? m.price).toFixed(2)}</b></div>
             </div>,
             <div key="av" className="avail-badges-row">
-              <span className={`avail-tag ${m.avail?.cug ? 'active' : ''}`}>CUG</span>
-              <span className={`avail-tag ${m.avail?.sunyani ? 'active' : ''}`}>Sunyani</span>
+              <span className={`avail-tag ${m.avail?.cug !== false ? 'active' : ''}`}>CUG</span>
+              <span className={`avail-tag ${m.avail?.sunyani !== false ? 'active' : ''}`}>Sunyani</span>
             </div>,
-            <button
-              key="d"
-              className="btn-del-sm"
-              onClick={() => {
-                if (confirm(`Remove "${m.name}" from the menu?`)) {
-                  setMenu(menu.filter(x => x.id !== m.id))
-                  say(`Dish "${m.name}" deleted`)
-                }
-              }}
-            >
-              Delete
-            </button>
+            <div key="act" style={{ display: 'flex', gap: '6px' }}>
+              <button
+                className="btn-stock-toggle btn-restock"
+                style={{ padding: '4px 10px', fontSize: '12px' }}
+                onClick={() => setEditingMeal({
+                  ...m,
+                  prices: m.prices || { cug: m.price, sunyani: m.price },
+                  avail: m.avail || { cug: true, sunyani: true }
+                })}
+              >
+                ✏️ Edit
+              </button>
+              <button
+                className="btn-del-sm"
+                onClick={() => handleDelete(m)}
+              >
+                🗑️ Delete
+              </button>
+            </div>
           ])}
         />
       </div>
+
+      {/* EDIT DISH MODAL */}
+      {editingMeal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}>
+          <div style={{ background: '#fff', borderRadius: '14px', width: '100%', maxWidth: '560px', padding: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#1e293b' }}>
+                ✏️ Edit Dish · {editingMeal.name}
+              </h3>
+              <button onClick={() => setEditingMeal(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}>×</button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '70vh', overflowY: 'auto', paddingRight: '4px' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Meal Name</label>
+                <input
+                  type="text"
+                  value={editingMeal.name}
+                  onChange={e => setEditingMeal({ ...editingMeal, name: e.target.value })}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Category</label>
+                  <select
+                    value={editingMeal.cat}
+                    onChange={e => setEditingMeal({ ...editingMeal, cat: e.target.value })}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                  >
+                    {cats.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Base Price (GH₵)</label>
+                  <input
+                    type="number"
+                    value={editingMeal.price}
+                    onChange={e => setEditingMeal({ ...editingMeal, price: e.target.value })}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                  />
+                </div>
+              </div>
+
+              {/* Branch Specific Pricing */}
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#334155' }}>Branch-Specific Prices (GH₵)</span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '6px' }}>
+                  <div>
+                    <label style={{ fontSize: '11px', color: '#64748b' }}>CUG Campus Price</label>
+                    <input
+                      type="number"
+                      placeholder={editingMeal.price}
+                      value={editingMeal.prices?.cug ?? ''}
+                      onChange={e => setEditingMeal({
+                        ...editingMeal,
+                        prices: { ...(editingMeal.prices || {}), cug: e.target.value }
+                      })}
+                      style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '2px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '11px', color: '#64748b' }}>Sunyani Main Price</label>
+                    <input
+                      type="number"
+                      placeholder={editingMeal.price}
+                      value={editingMeal.prices?.sunyani ?? ''}
+                      onChange={e => setEditingMeal({
+                        ...editingMeal,
+                        prices: { ...(editingMeal.prices || {}), sunyani: e.target.value }
+                      })}
+                      style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '2px' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Photo URL</label>
+                <input
+                  type="text"
+                  value={editingMeal.img || ''}
+                  onChange={e => setEditingMeal({ ...editingMeal, img: e.target.value })}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Description</label>
+                <textarea
+                  rows="3"
+                  value={editingMeal.desc || ''}
+                  onChange={e => setEditingMeal({ ...editingMeal, desc: e.target.value })}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                />
+              </div>
+
+              {/* Branch Availability toggles */}
+              <div style={{ display: 'flex', gap: '20px', marginTop: '6px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={editingMeal.avail?.cug !== false}
+                    onChange={e => setEditingMeal({
+                      ...editingMeal,
+                      avail: { ...(editingMeal.avail || {}), cug: e.target.checked }
+                    })}
+                  />
+                  <span>Available at CUG Campus</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={editingMeal.avail?.sunyani !== false}
+                    onChange={e => setEditingMeal({
+                      ...editingMeal,
+                      avail: { ...(editingMeal.avail || {}), sunyani: e.target.checked }
+                    })}
+                  />
+                  <span>Available at Sunyani Main</span>
+                </label>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px', borderTop: '1px solid #e2e8f0', paddingTop: '14px' }}>
+              <button
+                onClick={() => setEditingMeal(null)}
+                style={{ background: '#f1f5f9', color: '#475569', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={busy}
+                onClick={handleSaveEdit}
+                style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}
+              >
+                {busy ? 'Saving...' : 'Save Dish Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1196,7 +1401,7 @@ function Promos() {
   )
 }
 
-// 10. MoMo Payments Queue (Reconcile, Verify, Manual Cash/MoMo)
+// 10. Paystack payments queue
 function Payments() {
   const { orders, markPaid, say } = useApp()
   const [filterPay, setFilterPay] = useState('all')
@@ -1212,8 +1417,8 @@ function Payments() {
     <div className="pbd-white-card">
       <div className="pbd-card-head-row">
         <div>
-          <h3>Mobile Money (MoMo) Reconciliation Queue</h3>
-          <p className="muted small">Match incoming customer MTN MoMo & Telecel payments.</p>
+          <h3>Paystack Payment Queue</h3>
+          <p className="muted small">Paystack confirms online payments automatically after verification.</p>
         </div>
 
         <div className="pbd-cat-chips">
@@ -1221,7 +1426,7 @@ function Payments() {
             All ({orders.length})
           </button>
           <button className={`branch-chip-btn ${filterPay === 'momo-pending' ? 'on' : ''}`} onClick={() => setFilterPay('momo-pending')}>
-            MoMo Pending ({orders.filter(o => o.pay === 'momo' && !o.paid).length})
+            Paystack Pending ({orders.filter(o => o.pay === 'momo' && !o.paid).length})
           </button>
           <button className={`branch-chip-btn ${filterPay === 'paid' ? 'on' : ''}`} onClick={() => setFilterPay('paid')}>
             Verified Paid ({orders.filter(o => o.paid).length})
@@ -1237,7 +1442,7 @@ function Payments() {
           <span key="p">{o.phone}</span>,
           <span key="b">{bn(o.branch)}</span>,
           <strong key="t">{money(o.total)}</strong>,
-          <span key="m">{o.pay === 'momo' ? 'MTN MoMo' : 'Cash on Delivery'}</span>,
+          <span key="m">{o.pay === 'momo' ? 'Paystack' : 'Cash on Delivery'}</span>,
           <span key="s" className={`paid-pill ${o.paid ? 'paid' : 'unpaid'}`}>
             {o.paid ? 'Verified Paid' : 'Pending Verification'}
           </span>,

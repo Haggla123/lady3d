@@ -124,17 +124,28 @@ lady-3ds-platform/
 
 ## 🛠️ Local Development & Seeding
 
+On Windows, open PowerShell in the project folder:
+
 ```bash
-# 1. Install dependencies
 npm install
-
-# 2. Configure environment
-cp .env.example .env
-
-# 3. Seed initial menu, delivery zones, daily portions, and demo staff accounts
+Copy-Item .env.example .env
+# Edit .env and set MONGODB_URI, JWT_SECRET (32+ characters),
+# SEED_OWNER_EMAIL, and SEED_OWNER_PASSWORD (8+ characters).
 npm run seed
-
-# 4. Start frontend and backend
-npm run dev      # Frontend at http://localhost:5173
-npm run server   # API at http://localhost:4000
 ```
+
+Keep the API and website running in separate PowerShell windows:
+
+```bash
+# Terminal 1
+npm run server:dev
+```
+
+```bash
+# Terminal 2
+npm run dev
+```
+
+Open `http://localhost:5173/#/staff-login` and sign in using the owner email and password you put in `.env`. When both owner variables are set before seeding, the seed also creates development staff accounts such as `manager.cug@lady3d.local` and `driver.cug@lady3d.local`; their initial password is `StaffPass123!`. Set a new password before using any seeded staff account outside local development.
+
+Paystack checkout stays hidden until `.env` has `PAYSTACK_SECRET_KEY` and real, reachable `API_PUBLIC_URL` and `FRONTEND_PUBLIC_URL` values. Use your Paystack test secret key during development. Set the Paystack webhook URL to `<API_PUBLIC_URL>/api/payments/paystack/webhook`; the browser return URL is registered by the server as `<API_PUBLIC_URL>/api/payments/paystack/return`.

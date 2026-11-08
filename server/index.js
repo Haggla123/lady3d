@@ -6,7 +6,7 @@ import rateLimit from 'express-rate-limit'
 import bcrypt from 'bcryptjs'
 import cookieParser from 'cookie-parser'
 import cors from 'cors'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 import {
   MenuItem,
@@ -40,7 +40,12 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173,ht
   .split(',')
   .map(x => x.trim())
 app.use(cors({ origin: (origin, callback) => callback(null, !origin || allowedOrigins.includes(origin)), credentials: true }))
-app.use(express.json({ limit: '32kb' }))
+app.use(express.json({
+  limit: '32kb',
+  verify(req, _res, buffer) {
+    if (req.originalUrl.startsWith('/api/payments/paystack/webhook')) req.rawBody = Buffer.from(buffer)
+  }
+}))
 app.use(cookieParser())
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false }))
 app.use('/api/orders', rateLimit({ windowMs: 60 * 1000, limit: 40, standardHeaders: 'draft-8', legacyHeaders: false }))
@@ -59,6 +64,20 @@ const publicUser = user => ({
 const authBody = z.object({ email: z.string().email().max(254), password: z.string().min(8).max(128) })
 
 const getTodayString = () => new Date().toISOString().slice(0, 10)
+const capacityOrderStatuses = ['pending_payment', 'confirmed', 'preparing', 'ready_for_collection', 'ready_for_dispatch', 'out_for_delivery']
+
+async function reserveBranchSlot(branchId) {
+  const branch = await Branch.findOneAndUpdate(
+    { id: branchId, open: { $ne: false }, orderPaused: { $ne: true }, $expr: { $lt: ['$currentActiveOrders', '$maxActiveOrders'] } },
+    { $inc: { currentActiveOrders: 1 } },
+    { new: true }
+  )
+  return Boolean(branch)
+}
+
+async function releaseBranchSlot(branchId) {
+  await Branch.updateOne({ id: branchId, currentActiveOrders: { $gt: 0 } }, { $inc: { currentActiveOrders: -1 } })
+}
 
 // Helper: Ensure and fetch DailyAvailability record
 async function getOrCreateDailyStock(branchId, mealId, mealName) {
@@ -165,14 +184,7 @@ app.get('/api/health', (_req, res) =>
 
 app.get('/api/public/config', (_req, res) =>
   res.json({
-    momoEnabled: [
-      process.env.HUBTEL_API_ID,
-      process.env.HUBTEL_API_KEY,
-      process.env.HUBTEL_COLLECTION_ACCOUNT,
-      process.env.HUBTEL_CALLBACK_URL,
-      process.env.HUBTEL_RETURN_URL,
-      process.env.HUBTEL_CANCEL_URL
-    ].every(Boolean)
+    paystackEnabled: [process.env.PAYSTACK_SECRET_KEY, process.env.API_PUBLIC_URL, process.env.FRONTEND_PUBLIC_URL].every(Boolean)
   })
 )
 
@@ -307,6 +319,7 @@ const orderBody = z.object({
   orderType: z.enum(['collection', 'delivery']),
   name: z.string().trim().min(2).max(100),
   phone: z.string().regex(/^\+?[0-9 ()-]{9,18}$/),
+  email: z.string().email().max(254).optional(),
   
   // Fulfilment specifics
   deliveryZoneId: z.string().optional(),
@@ -321,17 +334,25 @@ const orderBody = z.object({
 // Core Order Creation & Automatic Confirmation Check
 app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
   const input = orderBody.parse(req.body)
+  const idempotencyKey = req.get('Idempotency-Key')
+  if (idempotencyKey && !/^[A-Za-z0-9-]{8,128}$/.test(idempotencyKey)) return res.status(400).json({ error: 'Invalid idempotency key' })
+  if (idempotencyKey) {
+    const existing = await Order.findOne({ idempotencyKey }).lean()
+    if (existing) return res.status(200).json({ order: existing, checkoutUrl: existing.checkoutUrl })
+  }
 
-  // Check 1: Hubtel prerequisite if MoMo selected
+  const paymentEmail = input.email || req.user?.email
+  if (input.pay === 'momo' && !/^\S+@\S+\.\S+$/.test(paymentEmail || '')) {
+    return res.status(400).json({ error: 'A valid email address is required for Paystack checkout.' })
+  }
+
+  // Paystack must be fully configured before an online payment order is accepted.
   if (input.pay === 'momo' && ![
-    process.env.HUBTEL_API_ID,
-    process.env.HUBTEL_API_KEY,
-    process.env.HUBTEL_COLLECTION_ACCOUNT,
-    process.env.HUBTEL_CALLBACK_URL,
-    process.env.HUBTEL_RETURN_URL,
-    process.env.HUBTEL_CANCEL_URL
+    process.env.PAYSTACK_SECRET_KEY,
+    process.env.API_PUBLIC_URL,
+    process.env.FRONTEND_PUBLIC_URL
   ].every(Boolean)) {
-    return res.status(503).json({ error: 'Mobile Money checkout is not configured. Choose cash or contact administrator.' })
+    return res.status(503).json({ error: 'Paystack checkout is not configured. Choose cash or contact the administrator.' })
   }
 
   // Check 2: Branch status & capacity check
@@ -419,6 +440,10 @@ app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
   // Check 6: ATOMIC STOCK RESERVATION
   // Validates available quantity and reserves portions atomically
   await reserveOrderStock(input.branch, normalizedItems)
+  if (!await reserveBranchSlot(input.branch)) {
+    await releaseOrderStock(input.branch, normalizedItems)
+    return res.status(409).json({ error: 'This branch is at order capacity or has paused new orders. Please try again shortly.' })
+  }
 
   // If passed, create order with distinct status fields
   const ref = `L3D-${randomBytes(8).toString('hex').toUpperCase()}`
@@ -433,12 +458,14 @@ app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
     initialPaymentStatus = 'pending'
   }
 
-  const order = await Order.create({
+  let order
+  try { order = await Order.create({
     ref,
     customerId: req.user?.id,
     isGuest: !req.user,
     name: input.name,
     phone: input.phone,
+    customerEmail: paymentEmail,
     branch: input.branch,
     orderType: input.orderType,
     orderStatus: initialOrderStatus,
@@ -466,51 +493,58 @@ app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
     note: input.note,
     pay: input.pay,
     paymentReference: input.pay === 'momo' ? ref : undefined,
+    paymentProvider: input.pay === 'momo' ? 'paystack' : undefined,
+    idempotencyKey,
     statusHistory: [{
       orderStatus: initialOrderStatus,
       paymentStatus: initialPaymentStatus,
       deliveryStatus: initialDeliveryStatus,
       timestamp: new Date(),
-      note: input.pay === 'momo' ? 'Order initiated, awaiting MoMo authorization' : 'Order automatically validated and confirmed. Sent to kitchen queue.',
+      note: input.pay === 'momo' ? 'Order initiated, awaiting Paystack payment authorization' : 'Order automatically validated and confirmed. Sent to kitchen queue.',
       updatedBy: req.user?.name || 'Customer'
     }]
-  })
+  }) } catch (error) {
+    await releaseOrderStock(input.branch, normalizedItems)
+    await releaseBranchSlot(input.branch)
+    throw error
+  }
 
-  // MoMo Payment initiation
+  // Paystack checkout initialization is server-to-server. The client receives only the hosted checkout URL.
   if (input.pay === 'momo') {
     try {
-      const base = process.env.HUBTEL_SANDBOX === 'true'
-        ? 'https://code.hubtel.com/sandbox/v1/payproxyapi'
-        : 'https://payproxyapi.hubtel.com'
-      const response = await fetch(`${base}/items/initiate`, {
+      const response = await fetch('https://api.paystack.co/transaction/initialize', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Basic ${Buffer.from(`${process.env.HUBTEL_API_ID}:${process.env.HUBTEL_API_KEY}`).toString('base64')}`
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`
         },
         body: JSON.stringify({
-          totalAmount: total,
-          description: `Lady 3D order ${ref}`,
-          callbackUrl: process.env.HUBTEL_CALLBACK_URL,
-          returnUrl: process.env.HUBTEL_RETURN_URL,
-          cancellationUrl: process.env.HUBTEL_CANCEL_URL,
-          merchantAccountNumber: process.env.HUBTEL_COLLECTION_ACCOUNT,
-          clientReference: ref
+          email: paymentEmail,
+          amount: String(Math.round(total * 100)),
+          currency: 'GHS',
+          reference: ref,
+          callback_url: `${process.env.API_PUBLIC_URL.replace(/\/$/, '')}/api/payments/paystack/return`,
+          metadata: { order_ref: ref, branch: input.branch, fulfilment: input.orderType }
         })
       })
       const result = await response.json()
-      const checkoutUrl = result?.data?.checkoutUrl || result?.Data?.checkoutUrl
-      if (!response.ok || !checkoutUrl) throw new Error('Hubtel did not return a checkout URL')
+      const checkoutUrl = result?.data?.authorization_url
+      if (!response.ok || result?.status !== true || !checkoutUrl) throw new Error(result?.message || 'Paystack did not return a checkout URL')
+      await Order.updateOne({ _id: order._id }, { $set: { checkoutUrl } })
       return res.status(201).json({
         order: { ref, total, orderStatus: order.orderStatus, paymentStatus: order.paymentStatus, deliveryStatus: order.deliveryStatus },
         checkoutUrl
       })
     } catch (error) {
-      console.error('Hubtel checkout initiation failed:', error.message)
-      return res.status(202).json({
-        order: { ref, total, orderStatus: order.orderStatus, paymentStatus: order.paymentStatus, deliveryStatus: order.deliveryStatus },
-        message: `Payment initiated for order ${ref}. Complete on prompt or check status.`
+      console.error('Paystack checkout initialization failed:', error.message)
+      await Order.updateOne({ _id: order._id, paymentStatus: 'pending' }, {
+        $set: { paymentStatus: 'failed', orderStatus: 'cancelled', status: 0 },
+        $unset: { idempotencyKey: 1 },
+        $push: { statusHistory: { orderStatus: 'cancelled', paymentStatus: 'failed', deliveryStatus: order.deliveryStatus, timestamp: new Date(), note: 'Paystack checkout could not be initialized.', updatedBy: 'System' } }
       })
+      await releaseOrderStock(order.branch, order.items)
+      await releaseBranchSlot(order.branch)
+      return res.status(502).json({ error: 'Paystack could not start checkout. Please try again.' })
     }
   }
 
@@ -518,74 +552,100 @@ app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
   res.status(201).json({ order })
 }))
 
-// Hubtel Payment verification & callbacks
-const verifyHubtelPayment = async ref => {
-  const base = process.env.HUBTEL_SANDBOX === 'true'
-    ? 'https://code.hubtel.com/sandbox/v1/api-txnstatus/transactions'
-    : 'https://api-txnstatus.hubtel.com/transactions'
-  const url = new URL(`${base}/${process.env.HUBTEL_COLLECTION_ACCOUNT}/status`)
-  url.searchParams.set('clientReference', ref)
-  const response = await fetch(url, {
-    headers: { Authorization: `Basic ${Buffer.from(`${process.env.HUBTEL_API_ID}:${process.env.HUBTEL_API_KEY}`).toString('base64')}` }
+// Paystack verification is authoritative; browser redirects and webhook payloads alone never mark an order paid.
+const verifyPaystackReference = async reference => {
+  const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+    headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }
   })
-  if (!response.ok) throw new Error(`Hubtel status check returned ${response.status}`)
-  return response.json()
+  const result = await response.json()
+  if (!response.ok || result?.status !== true || !result?.data) throw new Error(result?.message || 'Paystack verification failed')
+  return result.data
 }
 
-app.post('/api/payments/hubtel/callback', asyncRoute(async (req, res) => {
-  const callbackIps = (process.env.HUBTEL_CALLBACK_IPS || '18.202.122.131,108.129.40.25').split(',').map(x => x.trim())
-  if (!callbackIps.includes(req.ip)) return res.status(403).json({ error: 'Callback source is not allowed' })
-  const ref = req.body?.Data?.ClientReference || req.body?.data?.ClientReference || req.body?.data?.clientReference
-  if (!ref) return res.status(400).json({ error: 'Missing payment reference' })
-  const order = await Order.findOne({ ref, pay: 'momo' })
-  if (!order) return res.status(404).json({ error: 'Unknown payment reference' })
+async function applyPaystackResult(reference) {
+  const order = await Order.findOne({ ref: reference, paymentProvider: 'paystack', paymentStatus: 'pending' })
+  if (!order) return { order: await Order.findOne({ ref: reference }).lean(), changed: false }
 
-  const verification = await verifyHubtelPayment(ref)
-  const status = verification?.data?.status || verification?.Data?.Status
-  const paidAmount = Number(verification?.data?.amount ?? verification?.Data?.Amount)
+  const payment = await verifyPaystackReference(reference)
+  if (payment.reference !== order.paymentReference || payment.currency !== 'GHS' || Number(payment.amount) !== Math.round(order.total * 100)) {
+    throw Object.assign(new Error('Payment amount, currency, or reference does not match the order'), { status: 400 })
+  }
 
-  if (status === 'Paid' && paidAmount === order.total) {
-    if (order.paymentStatus !== 'paid') {
-      order.paid = true
-      order.paymentStatus = 'paid'
-      order.orderStatus = 'confirmed' // Automatically confirmed upon payment!
-      order.status = 1
-      order.hubtelOrderId = req.body?.Data?.OrderId || req.body?.Data?.TransactionId || req.body?.data?.CheckoutId
-      order.statusHistory.push({
-        orderStatus: 'confirmed',
-        paymentStatus: 'paid',
-        deliveryStatus: order.deliveryStatus,
-        timestamp: new Date(),
-        note: 'Payment verified via Hubtel callback. Order confirmed for kitchen preparation.',
-        updatedBy: 'Hubtel Gateway'
-      })
-      await order.save()
-      // Commit reserved stock to sold
-      await commitOrderStock(order.branch, order.items)
+  if (payment.status === 'success') {
+    const updated = await Order.findOneAndUpdate(
+      { _id: order._id, paymentStatus: 'pending', orderStatus: 'pending_payment' },
+      {
+        $set: {
+          paid: true,
+          paymentStatus: 'paid',
+          orderStatus: 'confirmed',
+          status: 1,
+          providerTransactionId: String(payment.id),
+          paymentVerifiedAt: new Date()
+        },
+        $push: { statusHistory: {
+          orderStatus: 'confirmed', paymentStatus: 'paid', deliveryStatus: order.deliveryStatus,
+          timestamp: new Date(), note: 'Payment verified with Paystack. Order confirmed for kitchen preparation.', updatedBy: 'Paystack'
+        } }
+      },
+      { new: true }
+    )
+    if (updated) await commitOrderStock(updated.branch, updated.items)
+    return { order: updated || await Order.findById(order._id).lean(), changed: Boolean(updated) }
+  }
+
+  if (['failed', 'abandoned'].includes(payment.status)) {
+    const updated = await Order.findOneAndUpdate(
+      { _id: order._id, paymentStatus: 'pending', orderStatus: 'pending_payment' },
+      {
+        $set: { paymentStatus: 'failed', orderStatus: 'cancelled', status: 0 },
+        $unset: { idempotencyKey: 1 },
+        $push: { statusHistory: {
+          orderStatus: 'cancelled', paymentStatus: 'failed', deliveryStatus: order.deliveryStatus,
+          timestamp: new Date(), note: 'Paystack payment failed or was abandoned. Reserved stock released.', updatedBy: 'Paystack'
+        } }
+      },
+      { new: true }
+    )
+    if (updated) {
+      await releaseOrderStock(updated.branch, updated.items)
+      await releaseBranchSlot(updated.branch)
     }
-  } else if (status === 'Failed') {
-    if (order.paymentStatus !== 'failed') {
-      order.paymentStatus = 'failed'
-      order.orderStatus = 'cancelled'
-      order.statusHistory.push({
-        orderStatus: 'cancelled',
-        paymentStatus: 'failed',
-        deliveryStatus: order.deliveryStatus,
-        timestamp: new Date(),
-        note: 'Mobile Money payment failed. Reserved stock released.',
-        updatedBy: 'Hubtel Gateway'
-      })
-      await order.save()
-      // Release reserved stock
-      await releaseOrderStock(order.branch, order.items)
-    }
+    return { order: updated || await Order.findById(order._id).lean(), changed: Boolean(updated) }
+  }
+  return { order, changed: false }
+}
+
+app.get('/api/payments/paystack/return', asyncRoute(async (req, res) => {
+  const reference = String(req.query.reference || '')
+  if (reference) {
+    try { await applyPaystackResult(reference) }
+    catch (error) { console.error('Paystack return verification failed:', error.message) }
+  }
+  const target = new URL(process.env.FRONTEND_PUBLIC_URL || 'http://localhost:5173')
+  target.hash = reference ? `/track/${encodeURIComponent(reference)}` : '/cart'
+  res.redirect(303, target.toString())
+}))
+
+app.post('/api/payments/paystack/webhook', asyncRoute(async (req, res) => {
+  const signature = req.get('Paystack-Signature') || ''
+  const expected = createHmac('sha512', process.env.PAYSTACK_SECRET_KEY || '').update(req.rawBody || Buffer.alloc(0)).digest('hex')
+  const signatureBuffer = Buffer.from(signature, 'hex')
+  const expectedBuffer = Buffer.from(expected, 'hex')
+  if (!signature || signatureBuffer.length !== expectedBuffer.length || !timingSafeEqual(signatureBuffer, expectedBuffer)) {
+    return res.status(401).json({ error: 'Invalid Paystack signature' })
+  }
+  if (req.body?.event === 'charge.success' && req.body?.data?.reference) {
+    await applyPaystackResult(String(req.body.data.reference))
   }
   res.status(200).json({ received: true })
 }))
 
 // Tracking endpoint for customer (accessible by ref without login)
 app.get('/api/orders/:ref', asyncRoute(async (req, res) => {
-  const order = await Order.findOne({ ref: req.params.ref.toUpperCase() }).lean()
+  const order = await Order.findOne({ ref: req.params.ref.toUpperCase() })
+    .select('ref orderStatus paymentStatus deliveryStatus total branch orderType items createdAt pay status deliveryAssignment.driverName deliveryAssignment.driverPhone')
+    .lean()
   if (!order) return res.status(404).json({ error: 'Order not found' })
   res.json({ order })
 }))
@@ -593,30 +653,31 @@ app.get('/api/orders/:ref', asyncRoute(async (req, res) => {
 // ==========================================
 // KITCHEN OPERATIONS API
 // ==========================================
-app.get('/api/kitchen/orders', requireAuth, requireStaff, asyncRoute(async (req, res) => {
+app.get('/api/kitchen/orders', requireAuth, requireRoles('Owner', 'Manager', 'Kitchen'), asyncRoute(async (req, res) => {
   const filter = {
     orderStatus: { $in: ['confirmed', 'preparing', 'ready_for_collection', 'ready_for_dispatch'] }
   }
-  if (req.user.assignedBranch && req.user.assignedBranch !== 'all') {
+  if (req.user.role !== 'Owner' && req.user.assignedBranch && req.user.assignedBranch !== 'all') {
     filter.branch = req.user.assignedBranch
   }
   const orders = await Order.find(filter).sort({ createdAt: 1 }).limit(100).lean()
   res.json({ orders })
 }))
 
-app.patch('/api/kitchen/orders/:ref/status', requireAuth, requireStaff, asyncRoute(async (req, res) => {
+app.patch('/api/kitchen/orders/:ref/status', requireAuth, requireRoles('Owner', 'Manager', 'Kitchen'), asyncRoute(async (req, res) => {
   const { action } = z.object({
     action: z.enum(['start_cooking', 'mark_ready', 'complete_pickup'])
   }).parse(req.body)
 
   const filter = { ref: req.params.ref.toUpperCase() }
-  if (req.user.assignedBranch && req.user.assignedBranch !== 'all') {
+  if (req.user.role !== 'Owner' && req.user.assignedBranch && req.user.assignedBranch !== 'all') {
     filter.branch = req.user.assignedBranch
   }
   const order = await Order.findOne(filter)
   if (!order) return res.status(404).json({ error: 'Order not found' })
 
   if (action === 'start_cooking') {
+    if (!['confirmed', 'preparing'].includes(order.orderStatus) || order.paymentStatus === 'pending' || order.paymentStatus === 'failed') return res.status(409).json({ error: 'Order must be confirmed and paid or cash-on-delivery before cooking.' })
     order.orderStatus = 'preparing'
     order.status = 2
     order.statusHistory.push({
@@ -628,6 +689,7 @@ app.patch('/api/kitchen/orders/:ref/status', requireAuth, requireStaff, asyncRou
       updatedBy: req.user.name
     })
   } else if (action === 'mark_ready') {
+    if (!['preparing', 'ready_for_collection', 'ready_for_dispatch'].includes(order.orderStatus)) return res.status(409).json({ error: 'Start cooking before marking this order ready.' })
     if (order.orderType === 'collection') {
       order.orderStatus = 'ready_for_collection'
       order.status = 3
@@ -646,6 +708,7 @@ app.patch('/api/kitchen/orders/:ref/status', requireAuth, requireStaff, asyncRou
     })
   } else if (action === 'complete_pickup') {
     if (order.orderType !== 'collection') return res.status(400).json({ error: 'Only collection orders can be marked collected at the kitchen counter' })
+    if (order.orderStatus !== 'ready_for_collection') return res.status(409).json({ error: 'Only ready collection orders can be completed.' })
     order.orderStatus = 'collected'
     order.status = 4
     if (order.pay === 'cash') {
@@ -661,22 +724,25 @@ app.patch('/api/kitchen/orders/:ref/status', requireAuth, requireStaff, asyncRou
       updatedBy: req.user.name
     })
     await commitOrderStock(order.branch, order.items)
+    await releaseBranchSlot(order.branch)
   }
 
   await order.save()
   res.json({ order })
 }))
 
-app.get('/api/kitchen/availability', requireAuth, requireStaff, asyncRoute(async (req, res) => {
+app.get('/api/kitchen/availability', requireAuth, requireRoles('Owner', 'Manager', 'Kitchen'), asyncRoute(async (req, res) => {
   const branchId = req.query.branch || req.user.assignedBranch || 'cug'
+  if (req.user.role !== 'Owner' && req.user.assignedBranch !== 'all' && branchId !== req.user.assignedBranch) return res.status(403).json({ error: 'You can only view stock for your assigned branch.' })
   const date = getTodayString()
   const records = await DailyAvailability.find({ branchId, date }).lean()
   res.json({ records })
 }))
 
-app.patch('/api/kitchen/availability/:mealId', requireAuth, requireStaff, asyncRoute(async (req, res) => {
+app.patch('/api/kitchen/availability/:mealId', requireAuth, requireRoles('Owner', 'Manager', 'Kitchen'), asyncRoute(async (req, res) => {
   const { mealId } = req.params
   const branchId = req.query.branch || req.user.assignedBranch || 'cug'
+  if (req.user.role !== 'Owner' && req.user.assignedBranch !== 'all' && branchId !== req.user.assignedBranch) return res.status(403).json({ error: 'You can only manage stock for your assigned branch.' })
   const body = z.object({
     status: z.enum(['available', 'sold_out', 'unavailable_today', 'temporarily_paused']).optional(),
     addPrepared: z.number().int().min(-100).max(500).optional(),
@@ -699,26 +765,23 @@ app.patch('/api/kitchen/availability/:mealId', requireAuth, requireStaff, asyncR
 // ==========================================
 // DELIVERY OPERATIONS API
 // ==========================================
-app.get('/api/delivery/orders', requireAuth, requireStaff, asyncRoute(async (req, res) => {
+app.get('/api/delivery/orders', requireAuth, requireRoles('Owner', 'Manager', 'Driver'), asyncRoute(async (req, res) => {
   const filter = {
     orderType: 'delivery',
     orderStatus: { $nin: ['cancelled', 'rejected'] }
   }
-  if (req.user.assignedBranch && req.user.assignedBranch !== 'all') {
+  if (req.user.role !== 'Owner' && req.user.assignedBranch && req.user.assignedBranch !== 'all') {
     filter.branch = req.user.assignedBranch
   }
   // If rider role, can filter to self-assigned or pending
   if (req.user.role === 'Driver') {
-    filter.$or = [
-      { 'deliveryAssignment.driverId': req.user._id },
-      { deliveryStatus: 'awaiting_assignment' }
-    ]
+    filter['deliveryAssignment.driverId'] = req.user._id
   }
   const orders = await Order.find(filter).sort({ createdAt: -1 }).limit(100).lean()
   res.json({ orders })
 }))
 
-app.patch('/api/delivery/orders/:ref/assign', requireAuth, requireStaff, asyncRoute(async (req, res) => {
+app.patch('/api/delivery/orders/:ref/assign', requireAuth, requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
   const body = z.object({
     driverId: z.string().optional(),
     driverName: z.string().optional(),
@@ -727,8 +790,11 @@ app.patch('/api/delivery/orders/:ref/assign', requireAuth, requireStaff, asyncRo
 
   const order = await Order.findOne({ ref: req.params.ref.toUpperCase(), orderType: 'delivery' })
   if (!order) return res.status(404).json({ error: 'Delivery order not found' })
+  if (req.user.role !== 'Owner' && req.user.assignedBranch !== 'all' && req.user.assignedBranch !== order.branch) return res.status(403).json({ error: 'This order belongs to another branch.' })
+  if (!['awaiting_assignment', 'failed_delivery'].includes(order.deliveryStatus)) return res.status(409).json({ error: 'This delivery is already assigned or complete.' })
 
   const driver = body.driverId ? await User.findById(body.driverId) : req.user
+  if (!driver || driver.role !== 'Driver' || driver.active === false || (driver.assignedBranch !== 'all' && driver.assignedBranch !== order.branch)) return res.status(400).json({ error: 'Choose an active driver assigned to this branch.' })
   order.deliveryStatus = 'assigned'
   order.deliveryAssignment = {
     driverId: driver._id,
@@ -748,9 +814,12 @@ app.patch('/api/delivery/orders/:ref/assign', requireAuth, requireStaff, asyncRo
   res.json({ order })
 }))
 
-app.patch('/api/delivery/orders/:ref/pickup', requireAuth, requireStaff, asyncRoute(async (req, res) => {
+app.patch('/api/delivery/orders/:ref/pickup', requireAuth, requireRoles('Owner', 'Manager', 'Driver'), asyncRoute(async (req, res) => {
   const order = await Order.findOne({ ref: req.params.ref.toUpperCase(), orderType: 'delivery' })
   if (!order) return res.status(404).json({ error: 'Delivery order not found' })
+  if (req.user.role !== 'Owner' && req.user.assignedBranch !== 'all' && req.user.assignedBranch !== order.branch) return res.status(403).json({ error: 'This order belongs to another branch.' })
+  if (req.user.role === 'Driver' && String(order.deliveryAssignment?.driverId || '') !== String(req.user._id)) return res.status(403).json({ error: 'This delivery is not assigned to you.' })
+  if (!['assigned', 'awaiting_pickup'].includes(order.deliveryStatus) || order.orderStatus !== 'ready_for_dispatch') return res.status(409).json({ error: 'This order is not ready for driver pickup.' })
 
   order.deliveryStatus = 'picked_up'
   order.orderStatus = 'out_for_delivery'
@@ -770,9 +839,12 @@ app.patch('/api/delivery/orders/:ref/pickup', requireAuth, requireStaff, asyncRo
   res.json({ order })
 }))
 
-app.patch('/api/delivery/orders/:ref/deliver', requireAuth, requireStaff, asyncRoute(async (req, res) => {
+app.patch('/api/delivery/orders/:ref/deliver', requireAuth, requireRoles('Owner', 'Manager', 'Driver'), asyncRoute(async (req, res) => {
   const order = await Order.findOne({ ref: req.params.ref.toUpperCase(), orderType: 'delivery' })
   if (!order) return res.status(404).json({ error: 'Delivery order not found' })
+  if (req.user.role !== 'Owner' && req.user.assignedBranch !== 'all' && req.user.assignedBranch !== order.branch) return res.status(403).json({ error: 'This order belongs to another branch.' })
+  if (req.user.role === 'Driver' && String(order.deliveryAssignment?.driverId || '') !== String(req.user._id)) return res.status(403).json({ error: 'This delivery is not assigned to you.' })
+  if (order.deliveryStatus !== 'picked_up') return res.status(409).json({ error: 'Record pickup before completing delivery.' })
 
   order.deliveryStatus = 'delivered'
   order.orderStatus = 'delivered'
@@ -793,16 +865,22 @@ app.patch('/api/delivery/orders/:ref/deliver', requireAuth, requireStaff, asyncR
     updatedBy: req.user.name
   })
   await commitOrderStock(order.branch, order.items)
+  await releaseBranchSlot(order.branch)
   await order.save()
   res.json({ order })
 }))
 
-app.patch('/api/delivery/orders/:ref/fail', requireAuth, requireStaff, asyncRoute(async (req, res) => {
+app.patch('/api/delivery/orders/:ref/fail', requireAuth, requireRoles('Owner', 'Manager', 'Driver'), asyncRoute(async (req, res) => {
   const { reason } = z.object({ reason: z.string().min(3).max(300) }).parse(req.body)
   const order = await Order.findOne({ ref: req.params.ref.toUpperCase(), orderType: 'delivery' })
   if (!order) return res.status(404).json({ error: 'Delivery order not found' })
+  if (req.user.role !== 'Owner' && req.user.assignedBranch !== 'all' && req.user.assignedBranch !== order.branch) return res.status(403).json({ error: 'This order belongs to another branch.' })
+  if (req.user.role === 'Driver' && String(order.deliveryAssignment?.driverId || '') !== String(req.user._id)) return res.status(403).json({ error: 'This delivery is not assigned to you.' })
+  if (!['assigned', 'awaiting_pickup', 'picked_up', 'in_transit'].includes(order.deliveryStatus)) return res.status(409).json({ error: 'Only an active assigned delivery can be marked failed.' })
 
   order.deliveryStatus = 'failed_delivery'
+  order.orderStatus = 'ready_for_dispatch'
+  order.status = 3
   if (order.deliveryAssignment) {
     order.deliveryAssignment.failureReason = reason
   }
@@ -824,28 +902,31 @@ app.patch('/api/delivery/orders/:ref/fail', requireAuth, requireStaff, asyncRout
 app.use('/api/admin', requireAuth, requireStaff)
 
 app.get('/api/admin/orders', asyncRoute(async (req, res) => {
-  const filter = req.user.assignedBranch && req.user.assignedBranch !== 'all' ? { branch: req.user.assignedBranch } : {}
+  const filter = req.user.role !== 'Owner' && req.user.assignedBranch && req.user.assignedBranch !== 'all' ? { branch: req.user.assignedBranch } : {}
   res.json({ orders: await Order.find(filter).sort({ createdAt: -1 }).limit(500).lean() })
 }))
 
-app.patch('/api/admin/orders/:ref/status', asyncRoute(async (req, res) => {
-  const { orderStatus, paymentStatus, deliveryStatus } = z.object({
-    orderStatus: z.string().optional(),
-    paymentStatus: z.string().optional(),
-    deliveryStatus: z.string().optional()
+app.patch('/api/admin/orders/:ref/status', requireRoles('Owner', 'Manager', 'Cashier'), asyncRoute(async (req, res) => {
+  const { orderStatus, paymentStatus } = z.object({
+    orderStatus: z.enum(['confirmed', 'preparing', 'ready_for_collection', 'ready_for_dispatch', 'out_for_delivery', 'collected', 'delivered', 'cancelled', 'rejected']).optional(),
+    paymentStatus: z.enum(['paid', 'unpaid', 'refunded', 'partially_refunded']).optional()
   }).parse(req.body)
 
   const filter = { ref: req.params.ref.toUpperCase() }
-  if (req.user.assignedBranch && req.user.assignedBranch !== 'all') filter.branch = req.user.assignedBranch
+  if (req.user.role !== 'Owner' && req.user.assignedBranch && req.user.assignedBranch !== 'all') filter.branch = req.user.assignedBranch
   const order = await Order.findOne(filter)
   if (!order) return res.status(404).json({ error: 'Order not found' })
+
+  if (orderStatus) return res.status(400).json({ error: 'Use the kitchen or delivery dashboard to update order progress.' })
+  if (paymentStatus && ['refunded', 'partially_refunded'].includes(paymentStatus) && req.user.role !== 'Owner') return res.status(403).json({ error: 'Only owners can record refunds.' })
+  if (paymentStatus === 'paid' && order.pay !== 'cash') return res.status(409).json({ error: 'Paystack payments can only be confirmed by Paystack verification.' })
+  if (paymentStatus && req.user.role === 'Manager' && order.branch !== req.user.assignedBranch && req.user.assignedBranch !== 'all') return res.status(403).json({ error: 'This order belongs to another branch.' })
 
   if (orderStatus) order.orderStatus = orderStatus
   if (paymentStatus) {
     order.paymentStatus = paymentStatus
     order.paid = paymentStatus === 'paid'
   }
-  if (deliveryStatus) order.deliveryStatus = deliveryStatus
 
   order.statusHistory.push({
     orderStatus: order.orderStatus,
@@ -873,6 +954,8 @@ app.post('/api/admin/delivery/zones', requireRoles('Owner', 'Manager'), asyncRou
     description: z.string().optional()
   }).parse(req.body)
 
+  if (req.user.role === 'Manager' && req.user.assignedBranch !== 'all' && body.branchId !== req.user.assignedBranch) return res.status(403).json({ error: 'You can only manage delivery zones for your assigned branch.' })
+
   const zone = await DeliveryZone.findOneAndUpdate({ id: body.id }, { $set: body }, { upsert: true, new: true })
   res.json({ zone })
 }))
@@ -891,6 +974,7 @@ app.patch('/api/admin/branches/:id/controls', requireRoles('Owner', 'Manager'), 
 
   const branch = await Branch.findOne({ id: req.params.id })
   if (!branch) return res.status(404).json({ error: 'Branch not found' })
+  if (req.user.role === 'Manager' && req.user.assignedBranch !== 'all' && req.user.assignedBranch !== branch.id) return res.status(403).json({ error: 'You can only manage your assigned branch.' })
 
   if (typeof body.open === 'boolean') branch.open = body.open
   if (typeof body.orderPaused === 'boolean') branch.orderPaused = body.orderPaused
@@ -904,8 +988,10 @@ app.patch('/api/admin/branches/:id/controls', requireRoles('Owner', 'Manager'), 
   res.json({ branch })
 }))
 
-app.get('/api/admin/staff', requireRoles('Owner', 'Manager'), asyncRoute(async (_req, res) => {
-  const staff = await User.find({ role: { $ne: 'customer' } }).select('-passwordHash').sort({ createdAt: -1 }).limit(500).lean()
+app.get('/api/admin/staff', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
+  const filter = { role: { $ne: 'customer' } }
+  if (req.user.role === 'Manager' && req.user.assignedBranch !== 'all') filter.assignedBranch = { $in: [req.user.assignedBranch, 'all'] }
+  const staff = await User.find(filter).select('-passwordHash').sort({ createdAt: -1 }).limit(500).lean()
   res.json({ staff: staff.map(publicUser) })
 }))
 
@@ -953,6 +1039,105 @@ app.get('/api/admin/reviews', asyncRoute(async (_req, res) => {
   res.json({ reviews: (await Review.find().sort({ createdAt: -1 }).lean()).map(review => ({ ...review, id: String(review._id) })) })
 }))
 
+// ==========================================
+// MENU MANAGEMENT API (Admins & Managers)
+// ==========================================
+app.post('/api/admin/menu', requireRoles('Owner'), asyncRoute(async (req, res) => {
+  const body = z.object({
+    name: z.string().trim().min(2).max(120),
+    cat: z.string().trim().min(2),
+    price: z.number().min(0),
+    prices: z.object({ cug: z.number().optional(), sunyani: z.number().optional() }).optional(),
+    avail: z.object({ cug: z.boolean().optional(), sunyani: z.boolean().optional() }).optional(),
+    desc: z.string().max(500).optional(),
+    img: z.string().optional(),
+    tag: z.string().optional()
+  }).parse(req.body)
+
+  const maxItem = await MenuItem.findOne().sort({ id: -1 }).select('id').lean()
+  const nextId = (maxItem?.id || 100) + 1
+
+  const item = await MenuItem.create({
+    id: nextId,
+    name: body.name,
+    cat: body.cat,
+    price: body.price,
+    prices: body.prices || { cug: body.price, sunyani: body.price },
+    avail: body.avail || { cug: true, sunyani: true },
+    desc: body.desc || '',
+    img: body.img || '',
+    tag: body.tag || 'Popular'
+  })
+
+  // Seed initial daily availability
+  const date = getTodayString()
+  for (const branch of ['cug', 'sunyani']) {
+    await DailyAvailability.create({
+      branchId: branch,
+      mealId: item.id,
+      mealName: item.name,
+      date,
+      status: 'available',
+      quantityPrepared: branch === 'cug' ? 45 : 60,
+      quantityReserved: 0,
+      quantitySold: 0
+    }).catch(() => {})
+  }
+
+  const allMenu = await MenuItem.find().sort({ id: 1 }).lean()
+  await AppState.findOneAndUpdate({ key: 'menu' }, { $set: { value: allMenu } }, { upsert: true })
+
+  res.status(201).json({ item })
+}))
+
+app.put('/api/admin/menu/:id', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
+  const id = Number(req.params.id)
+  const body = z.object({
+    name: z.string().trim().min(2).max(120).optional(),
+    cat: z.string().trim().min(2).optional(),
+    price: z.number().min(0).optional(),
+    prices: z.object({ cug: z.number().optional(), sunyani: z.number().optional() }).optional(),
+    avail: z.object({ cug: z.boolean().optional(), sunyani: z.boolean().optional() }).optional(),
+    desc: z.string().max(500).optional(),
+    img: z.string().optional(),
+    tag: z.string().optional()
+  }).parse(req.body)
+
+  if (req.user.role === 'Manager') {
+    const branchKey = req.user.assignedBranch
+    if (Object.keys(body).some(key => !['prices', 'avail'].includes(key))) return res.status(403).json({ error: 'Only owners can change the shared menu catalogue.' })
+    if (branchKey !== 'all' && body.prices && Object.keys(body.prices).some(key => key !== branchKey)) return res.status(403).json({ error: 'You can only change prices for your assigned branch.' })
+    if (branchKey !== 'all' && body.avail && Object.keys(body.avail).some(key => key !== branchKey)) return res.status(403).json({ error: 'You can only change availability for your assigned branch.' })
+    const current = await MenuItem.findOne({ id }).lean()
+    if (!current) return res.status(404).json({ error: 'Menu item not found' })
+    if (body.prices) body.prices = { ...current.prices, ...body.prices }
+    if (body.avail) body.avail = { ...current.avail, ...body.avail }
+  }
+
+  const item = await MenuItem.findOneAndUpdate({ id }, { $set: body }, { new: true })
+  if (!item) return res.status(404).json({ error: 'Menu item not found' })
+
+  if (body.name) {
+    await DailyAvailability.updateMany({ mealId: id }, { $set: { mealName: body.name } })
+  }
+
+  const allMenu = await MenuItem.find().sort({ id: 1 }).lean()
+  await AppState.findOneAndUpdate({ key: 'menu' }, { $set: { value: allMenu } }, { upsert: true })
+
+  res.json({ item })
+}))
+
+app.delete('/api/admin/menu/:id', requireRoles('Owner'), asyncRoute(async (req, res) => {
+  const id = Number(req.params.id)
+  await MenuItem.deleteOne({ id })
+  await DailyAvailability.deleteMany({ mealId: id })
+
+  const allMenu = await MenuItem.find().sort({ id: 1 }).lean()
+  await AppState.findOneAndUpdate({ key: 'menu' }, { $set: { value: allMenu } }, { upsert: true })
+
+  res.json({ success: true, id })
+}))
+
 const allowedStateKeys = ['menu', 'cats', 'branchStatus', 'promos', 'staff', 'customers', 'loyaltyRules', 'settings', 'votes', 'reviews']
 app.get('/api/admin/state', asyncRoute(async (req, res) => {
   const rows = await AppState.find({ key: { $in: allowedStateKeys } }).lean()
@@ -965,6 +1150,15 @@ app.put('/api/admin/state/:key', requireRoles('Owner', 'Manager'), asyncRoute(as
   const { key } = req.params
   if (!allowedStateKeys.includes(key)) return res.status(404).json({ error: 'Unknown setting' })
   const value = z.unknown().parse(req.body?.value)
+
+  if (key === 'menu' && Array.isArray(value)) {
+    const operations = value.map(item => ({
+      updateOne: { filter: { id: item.id }, update: { $set: item }, upsert: true }
+    }))
+    if (operations.length) await MenuItem.bulkWrite(operations)
+    await MenuItem.deleteMany({ id: { $nin: value.map(item => item.id) } })
+  }
+
   const row = await AppState.findOneAndUpdate({ key }, { $set: { value } }, { upsert: true, new: true, runValidators: true })
   res.json({ key, value: row.value })
 }))
@@ -989,4 +1183,8 @@ app.use((err, _req, res, _next) => {
 
 const port = Number(process.env.PORT || 4000)
 await mongoose.connect(process.env.MONGODB_URI)
+for (const branchId of ['cug', 'sunyani']) {
+  const currentActiveOrders = await Order.countDocuments({ branch: branchId, orderStatus: { $in: capacityOrderStatuses } })
+  await Branch.updateOne({ id: branchId }, { $set: { currentActiveOrders } })
+}
 app.listen(port, () => console.log(`Lady 3D Enterprise API listening on port ${port}`))

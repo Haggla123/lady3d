@@ -84,27 +84,50 @@ button, input, select, textarea {
   background: var(--bg-app);
   transition: all 0.3s ease;
   position: relative;
+  width: 100%;
 }
 
 .phone-device-wrapper {
   width: 100%;
-  max-width: 500px;
+  max-width: 1320px;
+  margin: 0 auto;
   min-height: 100vh;
   min-height: 100dvh;
   background-color: var(--bg-app);
   display: flex;
   flex-direction: column;
   position: relative;
-  box-shadow: 0 0 35px rgba(0, 0, 0, 0.04);
-  padding-bottom: calc(84px + env(safe-area-inset-bottom, 14px));
+  box-shadow: none;
+  padding: 0 20px calc(40px + env(safe-area-inset-bottom, 14px));
 }
 
 @media (max-width: 768px) {
   .phone-device-wrapper {
     max-width: 100%;
+    padding: 0 0 calc(84px + env(safe-area-inset-bottom, 14px));
     box-shadow: none;
-    padding-bottom: calc(84px + env(safe-area-inset-bottom, 14px));
   }
+}
+
+/* Hide mobile bottom navigation bar on desktop screens since top navbar is active */
+@media (min-width: 769px) {
+  .bottom-nav-bar {
+    display: none !important;
+  }
+}
+
+.staff-portal-btn {
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+  font-weight: 700 !important;
+  border-radius: 8px !important;
+  padding: 6px 14px !important;
+  border: 1px solid #fca5a5 !important;
+  transition: all 0.2s ease;
+}
+.staff-portal-btn:hover {
+  background: #dc2626 !important;
+  color: #fff !important;
 }
 
 /* Clean full-bleed mobile / responsive app shell */
@@ -671,8 +694,8 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
-  max-width: 1000px;
+  padding: 12px 24px;
+  max-width: 1320px;
   margin: 0 auto;
 }
 

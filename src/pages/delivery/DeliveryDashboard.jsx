@@ -4,10 +4,14 @@ import { money } from '../../utils/money.js'
 import { DELIVERY_STATUS_MAP, ORDER_STATUS_MAP, BRANCHES } from '../../data.js'
 import { Link } from '../../components/ui.jsx'
 
-export default function DeliveryDashboard({ branchId: initialBranch = 'all' }) {
+export default function DeliveryDashboard({ branchId: initialBranch = 'all', staffUser }) {
   const [selectedBranch, setSelectedBranch] = useState(initialBranch)
   const [orders, setOrders] = useState([])
   const [zones, setZones] = useState([])
+  const [drivers, setDrivers] = useState([])
+  const [driverChoice, setDriverChoice] = useState({})
+  const canManage = ['Owner', 'Manager'].includes(staffUser?.role)
+  const canChooseBranch = canManage && (staffUser?.role === 'Owner' || staffUser?.assignedBranch === 'all')
   const [activeTab, setActiveTab] = useState('deliveries') // 'deliveries' | 'zones'
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState('')
@@ -16,7 +20,7 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all' }) {
 
   // Zone creation form state
   const [newZone, setNewZone] = useState({
-    id: '', branchId: 'cug', name: '', fee: 5, minOrderValue: 20, estimatedMinutes: '20-30 mins', active: true
+    id: '', branchId: initialBranch === 'sunyani' ? 'sunyani' : 'cug', name: '', fee: 5, minOrderValue: 20, estimatedMinutes: '20-30 mins', active: true
   })
 
   const notify = text => {
@@ -26,9 +30,10 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all' }) {
 
   const loadData = async () => {
     try {
-      const [ordRes, zoneRes] = await Promise.all([
+      const [ordRes, zoneRes, staffRes] = await Promise.all([
         api('/delivery/orders'),
-        api('/delivery/zones')
+        api(`/delivery/zones${selectedBranch === 'all' ? '' : `?branch=${selectedBranch}`}`),
+        canManage ? api('/admin/staff') : Promise.resolve({ staff: [] })
       ])
       let list = ordRes.orders || []
       if (selectedBranch !== 'all') {
@@ -36,6 +41,7 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all' }) {
       }
       setOrders(list)
       setZones(zoneRes.zones || [])
+      setDrivers((staffRes.staff || []).filter(person => person.role === 'Driver' && person.active !== false && (person.branch === 'all' || person.branch === selectedBranch || selectedBranch === 'all')))
     } catch (err) {
       console.error('Delivery refresh error:', err.message)
     }
@@ -45,17 +51,19 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all' }) {
     loadData()
     const timer = setInterval(loadData, 10000)
     return () => clearInterval(timer)
-  }, [selectedBranch])
+  }, [selectedBranch, canManage])
 
   const handleAssign = async (ref) => {
-    const driverName = prompt('Enter delivery rider name:', 'Campus Rider')
-    if (!driverName) return
+    const driverId = driverChoice[ref]
+    if (!driverId) return notify('Select an active rider account first.')
+    const driver = drivers.find(person => person.id === driverId)
+    if (!driver) return notify('That rider is not available for this branch.')
     try {
       await api(`/delivery/orders/${ref}/assign`, {
         method: 'PATCH',
-        body: JSON.stringify({ driverName, driverPhone: '0551122334' })
+        body: JSON.stringify({ driverId })
       })
-      notify(`Assigned ${driverName} to order ${ref}`)
+      notify(`Assigned ${driver.name} to order ${ref}`)
       await loadData()
     } catch (err) {
       notify(err.message)
@@ -106,7 +114,7 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all' }) {
         body: JSON.stringify(newZone)
       })
       notify(`Delivery zone "${newZone.name}" created!`)
-      setNewZone({ id: '', branchId: 'cug', name: '', fee: 5, minOrderValue: 20, estimatedMinutes: '20-30 mins', active: true })
+      setNewZone({ id: '', branchId: selectedBranch === 'sunyani' ? 'sunyani' : 'cug', name: '', fee: 5, minOrderValue: 20, estimatedMinutes: '20-30 mins', active: true })
       await loadData()
     } catch (err) {
       notify(err.message)
@@ -128,7 +136,7 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all' }) {
         </div>
 
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <div style={{ background: '#1e293b', padding: '4px', borderRadius: '8px', display: 'flex' }}>
+          {canChooseBranch && <div style={{ background: '#1e293b', padding: '4px', borderRadius: '8px', display: 'flex' }}>
             <button
               onClick={() => setSelectedBranch('all')}
               style={{
@@ -156,11 +164,11 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all' }) {
             >
               Sunyani Main
             </button>
-          </div>
+          </div>}
 
-          <Link to="/admin/overview" style={{ color: '#cbd5e1', textDecoration: 'none', background: '#1e293b', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 600 }}>
+          {canManage && <Link to="/admin/overview" style={{ color: '#cbd5e1', textDecoration: 'none', background: '#1e293b', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 600 }}>
             ← Admin Console
-          </Link>
+          </Link>}
         </div>
       </header>
 
@@ -175,7 +183,7 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all' }) {
         >
           📦 Active Deliveries ({orders.length})
         </button>
-        <button
+        {canManage && <button
           onClick={() => setActiveTab('zones')}
           style={{
             padding: '10px 20px', borderRadius: '8px', fontWeight: 700, border: 'none', cursor: 'pointer',
@@ -183,7 +191,7 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all' }) {
           }}
         >
           🗺️ Delivery Zones & Fees ({zones.length})
-        </button>
+        </button>}
       </div>
 
       {msg && (
@@ -258,13 +266,19 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all' }) {
 
                   {/* Action Buttons based on delivery state */}
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {o.deliveryStatus === 'awaiting_assignment' && (
+                    {canManage && ['awaiting_assignment', 'failed_delivery'].includes(o.deliveryStatus) && (
+                      <>
+                      <select value={driverChoice[o.ref] || ''} onChange={event => setDriverChoice(current => ({ ...current, [o.ref]: event.target.value }))} aria-label={`Rider for ${o.ref}`} style={{ flex: 1, padding: '9px', borderRadius: '8px' }}>
+                        <option value="">Select rider…</option>
+                        {drivers.filter(driver => driver.branch === 'all' || driver.branch === o.branch).map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
+                      </select>
                       <button
                         onClick={() => handleAssign(o.ref)}
                         style={{ flex: 1, background: '#0284c7', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}
                       >
-                        👤 Assign Rider
+                        👤 {o.deliveryStatus === 'failed_delivery' ? 'Reassign Rider' : 'Assign Rider'}
                       </button>
+                      </>
                     )}
 
                     {['assigned', 'awaiting_pickup'].includes(o.deliveryStatus) && (

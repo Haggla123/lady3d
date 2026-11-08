@@ -55,7 +55,8 @@ export function AppProvider({ children }) {
   const [deviceFrame, setDeviceFrame] = useState(false)
   const [staffUser, setStaffUser] = useState(null)
   const [authReady, setAuthReady] = useState(false)
-  const [momoEnabled, setMomoEnabled] = useState(false)
+  const [paystackEnabled, setPaystackEnabled] = useState(false)
+  const [staff, setStaff] = useState([])
 
   const [branchStatus, setBranchStatus] = useState({
     cug: { open: true, notice: 'Campus Annex open 7am-8pm', supervisor: 'Mrs. Cynthia Boakye' },
@@ -73,7 +74,7 @@ export function AppProvider({ children }) {
     const initialize = async () => {
       try {
         const config = await api('/public/config')
-        if (alive) setMomoEnabled(Boolean(config.momoEnabled))
+        if (alive) setPaystackEnabled(Boolean(config.paystackEnabled))
         const bootstrap = await api('/public/bootstrap')
         if (alive) {
           if (bootstrap.menu?.length) setMenu(bootstrap.menu)
@@ -105,9 +106,12 @@ export function AppProvider({ children }) {
           ])
           if (!alive) return
           setOrders(currentOrders || [])
+          if (['Owner', 'Manager'].includes(session.role)) {
+            const { staff: currentStaff } = await api('/admin/staff')
+            if (alive) setStaff(currentStaff || [])
+          }
           if (state.menu) setMenu(state.menu)
           if (state.cats) setCats(state.cats)
-          if (state.branchStatus) setBranchStatus(state.branchStatus)
           if (state.promos) setPromos(state.promos)
         }
       } catch {
@@ -119,6 +123,19 @@ export function AppProvider({ children }) {
     initialize()
     return () => { alive = false }
   }, [])
+
+  // Keep operational screens current without requiring a manual refresh.
+  useEffect(() => {
+    if (!staffUser || staffUser.role === 'customer') return
+    const refresh = async () => {
+      try {
+        const { orders: currentOrders } = await api('/admin/orders')
+        setOrders(currentOrders || [])
+      } catch { /* Session may have expired; the next API action will show it. */ }
+    }
+    const timer = window.setInterval(refresh, 10000)
+    return () => window.clearInterval(timer)
+  }, [staffUser])
 
   const loginUser = userData => {
     setUser(userData)
@@ -256,6 +273,7 @@ export function AppProvider({ children }) {
         orderType: orderType === 'delivery' ? 'delivery' : 'collection',
         name: f.name,
         phone: f.phone,
+        email: f.email,
         deliveryZoneId: orderType === 'delivery' ? selectedZoneId : undefined,
         address: orderType === 'delivery' ? f.address : undefined,
         collectionTime: orderType === 'collection' ? (f.collectionTime || 'ASAP') : undefined,
@@ -263,7 +281,8 @@ export function AppProvider({ children }) {
         note: f.note,
         promoCode,
         pay: f.pay
-      })
+      }),
+      headers: f.pay === 'momo' ? { 'Idempotency-Key': f.idempotencyKey || crypto.randomUUID() } : undefined
     })
 
     setCart([])
@@ -277,6 +296,34 @@ export function AppProvider({ children }) {
     return result.order.ref
   }
 
+  const setStatus = async (ref, nextStatus) => {
+    const order = orders.find(item => item.ref === ref)
+    if (!order) throw new Error('Order is no longer in the dashboard. Refresh and try again.')
+    const actionByStatus = { 2: 'start_cooking', 3: 'mark_ready', 4: 'complete_pickup' }
+    const action = actionByStatus[nextStatus]
+    if (!action) throw new Error('This order cannot be moved to that status.')
+    if (order.orderType === 'delivery' && nextStatus === 4) {
+      throw new Error('Delivery orders are completed from the Delivery dashboard.')
+    }
+    try {
+      const { order: updated } = await api(`/kitchen/orders/${ref}/status`, {
+        method: 'PATCH', body: JSON.stringify({ action })
+      })
+      setOrders(rows => rows.map(row => row.ref === ref ? updated : row))
+      return updated
+    } catch (error) { say(error.message); throw error }
+  }
+
+  const markPaid = async ref => {
+    const order = orders.find(item => item.ref === ref)
+    if (!order || order.pay !== 'cash') throw new Error('Online payments are confirmed by Paystack automatically.')
+    const { order: updated } = await api(`/admin/orders/${ref}/status`, {
+      method: 'PATCH', body: JSON.stringify({ paymentStatus: 'paid' })
+    })
+    setOrders(rows => rows.map(row => row.ref === ref ? updated : row))
+    return updated
+  }
+
   const staffLogin = async (email, password) => {
     const { user: session } = await api('/auth/staff-login', { method: 'POST', body: JSON.stringify({ email, password }) })
     setStaffUser(session)
@@ -286,9 +333,12 @@ export function AppProvider({ children }) {
       api('/admin/state')
     ])
     setOrders(currentOrders || [])
+    if (['Owner', 'Manager'].includes(session.role)) {
+      const { staff: currentStaff } = await api('/admin/staff')
+      setStaff(currentStaff || [])
+    }
     if (state.menu) setMenu(state.menu)
     if (state.cats) setCats(state.cats)
-    if (state.branchStatus) setBranchStatus(state.branchStatus)
     return session
   }
 
@@ -323,7 +373,8 @@ export function AppProvider({ children }) {
     role, setRole,
     activeFood, setActiveFood,
     deviceFrame, setDeviceFrame,
-    staffUser, staffLogin, staffLogout, authReady, api, momoEnabled
+    staffUser, staffLogin, staffLogout, authReady, api, paystackEnabled,
+    setStatus, markPaid, staff, setStaff
   }
 
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>

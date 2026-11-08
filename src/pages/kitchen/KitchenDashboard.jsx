@@ -5,7 +5,7 @@ import { money } from '../../utils/money.js'
 import { ORDER_STATUS_MAP, BRANCHES } from '../../data.js'
 import { Link } from '../../components/ui.jsx'
 
-export default function KitchenDashboard({ branchId: propBranch = 'cug' }) {
+export default function KitchenDashboard({ branchId: propBranch = 'cug', staffUser }) {
   const [selectedBranch, setSelectedBranch] = useState(propBranch)
   const [orders, setOrders] = useState([])
   const [availability, setAvailability] = useState([])
@@ -93,7 +93,7 @@ export default function KitchenDashboard({ branchId: propBranch = 'cug' }) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {/* Branch Switcher */}
-          <div style={{ background: '#1e293b', padding: '4px', borderRadius: '8px', display: 'flex', border: '1px solid #334155' }}>
+          {(staffUser?.role === 'Owner' || staffUser?.assignedBranch === 'all') && <div style={{ background: '#1e293b', padding: '4px', borderRadius: '8px', display: 'flex', border: '1px solid #334155' }}>
             <button
               onClick={() => setSelectedBranch('cug')}
               style={{
@@ -112,7 +112,7 @@ export default function KitchenDashboard({ branchId: propBranch = 'cug' }) {
             >
               Sunyani Main
             </button>
-          </div>
+          </div>}
 
           {/* Sound Toggle */}
           <button

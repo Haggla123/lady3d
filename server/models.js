@@ -58,6 +58,7 @@ const OrderSchema = new Schema({
   isGuest: { type: Boolean, default: false },
   name: { type: String, required: true, trim: true },
   phone: { type: String, required: true, trim: true, index: true },
+  customerEmail: { type: String, lowercase: true, trim: true },
   branch: { type: String, enum: ['cug', 'sunyani'], required: true, index: true },
   orderType: { type: String, enum: ['collection', 'delivery'], required: true },
   
@@ -154,7 +155,11 @@ const OrderSchema = new Schema({
   // Payment info
   pay: { type: String, enum: ['cash', 'momo'], required: true },
   paymentReference: String,
-  hubtelOrderId: String,
+  paymentProvider: { type: String, enum: ['paystack'] },
+  providerTransactionId: String,
+  paymentVerifiedAt: Date,
+  idempotencyKey: { type: String, sparse: true, unique: true },
+  checkoutUrl: String,
   
   // Full Audit & Status Transition History
   statusHistory: [{

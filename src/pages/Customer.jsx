@@ -786,16 +786,18 @@ export function Cart() {
 
 // 6. Checkout Flow
 export function Checkout() {
-  const { lines, subtotal, discount, deliveryFee, total, price, ok, branch, place, user, setQty, orderType, setOrderType, say, momoEnabled } = useApp()
+  const { lines, subtotal, discount, deliveryFee, total, price, ok, branch, place, user, setQty, orderType, setOrderType, say, paystackEnabled } = useApp()
   const [f, setF] = useState({
     name: user?.name || '',
     phone: user?.phone || '',
+    email: user?.email || '',
     pay: 'cash',
     address: '',
     note: ''
   })
   const [step, setStep] = useState(1)
   const [err, setErr] = useState('')
+  const [idempotencyKey] = useState(() => crypto.randomUUID())
 
   const bad = lines.filter(l => branch && !ok(l.it))
 
@@ -817,6 +819,7 @@ export function Checkout() {
     if (!f.name.trim() || !/^0\d{9}$/.test(f.phone.replace(/\s+/g, ''))) {
       return setErr('Please enter your full name and valid 10-digit phone number (e.g. 0241234567).')
     }
+    if (f.pay === 'momo' && !/^\S+@\S+\.\S+$/.test(f.email || '')) return setErr('Enter an email address for Paystack checkout.')
     setErr('')
     setStep(2)
   }
@@ -824,7 +827,7 @@ export function Checkout() {
   const submit = async () => {
     if (bad.length) return setStep(1)
     try {
-      const ref = await place(f)
+      const ref = await place({ ...f, idempotencyKey })
       if (f.pay === 'momo') return
       go('/success/' + ref)
     } catch (error) { setErr(error.message); say(error.message) }
@@ -934,6 +937,13 @@ export function Checkout() {
                 />
               </label>
 
+              {f.pay === 'momo' && (
+                <label className="input-field-wrap">
+                  <span>Email for Paystack receipt</span>
+                  <input type="email" autoComplete="email" required value={f.email || ''} onChange={e => setF({ ...f, email: e.target.value })} placeholder="you@example.com" />
+                </label>
+              )}
+
               {orderType === 'delivery' && (
                 <label className="input-field-wrap">
                   <span>Hostel / Block & Room Number</span>
@@ -959,7 +969,7 @@ export function Checkout() {
             <div className="form-group-section">
               <label className="field-group-title">3. Payment Method</label>
               <div className="payment-options-grid">
-                {momoEnabled && <label className={`payment-card-opt ${f.pay === 'momo' ? 'selected' : ''}`}>
+                {paystackEnabled && <label className={`payment-card-opt ${f.pay === 'momo' ? 'selected' : ''}`}>
                   <input
                     type="radio"
                     name="pay"
@@ -968,10 +978,10 @@ export function Checkout() {
                   />
                   <div className="payment-opt-info">
                     <div className="payment-title-row">
-                      <b>📱 Mobile Money (MTN / Telecel / AT)</b>
+                      <b>📱 Pay securely with Paystack</b>
                       <span className="pay-badge-popular">Instant</span>
                     </div>
-                    <small>Continue to Hubtel secure checkout to approve payment</small>
+                    <small>Pay by Mobile Money, card, or another Paystack-supported method</small>
                   </div>
                 </label>}
 
@@ -1221,7 +1231,7 @@ export function OrderSuccess({ refId }) {
                 <b className="grand-total-amount">{money(order.total)}</b>
               </div>
               <div className="payment-status-pill">
-                Payment: {order.paid ? '✓ Paid' : order.pay === 'momo' ? 'Mobile Money (Prompt sent on dispatch)' : 'Pay on Collection / Delivery'}
+                Payment: {order.paid ? '✓ Paid' : order.pay === 'momo' ? 'Paystack payment pending' : 'Pay on Collection / Delivery'}
               </div>
             </div>
           </div>
@@ -1330,7 +1340,7 @@ export function Track({ refId }) {
               <div className={`order-paid-status ${order.paid || order.paymentStatus === 'paid' ? 'paid' : 'pending'}`}>
                 Payment: {order.paymentStatus ? order.paymentStatus.toUpperCase() : (order.paid ? 'PAID' : 'PENDING')}
               </div>
-              <span style={{ fontSize: '11px', color: '#64748b' }}>Method: {order.pay?.toUpperCase()}</span>
+              <span style={{ fontSize: '11px', color: '#64748b' }}>Method: {order.pay === 'momo' ? 'PAYSTACK' : 'CASH'}</span>
             </div>
           </div>
 

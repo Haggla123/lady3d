@@ -77,6 +77,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
   const {
     menu,
     setMenu,
+    cats = ['Rice', 'Waakye', 'Banku & Fufu', 'Soups & Stews', 'Sides & Drinks'],
     orders,
     setOrders,
     setStatus,
@@ -84,8 +85,10 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
     setStaff,
     branchStatus,
     setBranchStatus,
+    staffUser,
     staffLogout,
-    say
+    say,
+    api
   } = useApp()
 
   const [activeSection, setActiveSection] = useState(section || 'overview')
@@ -93,19 +96,88 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
   const [searchOrder, setSearchOrder] = useState('')
   const [soundEnabled, setSoundEnabled] = useState(true)
 
+  // Manager Meal Add / Edit state
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [newMeal, setNewMeal] = useState({ name: '', price: '', cat: 'Local Dishes', desc: '', img: '' })
+  const [editingMeal, setEditingMeal] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [priceDrafts, setPriceDrafts] = useState({})
+
+  const handleAddDish = async () => {
+    if (!newMeal.name.trim() || !newMeal.price) return say('Name and price are required')
+    setBusy(true)
+    try {
+      const payload = {
+        name: newMeal.name.trim(),
+        cat: newMeal.cat,
+        price: +newMeal.price,
+        desc: newMeal.desc.trim() || 'Authentic Ghanaian dish',
+        img: newMeal.img.trim() || 'https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&w=800&q=80',
+        avail: { cug: true, sunyani: true },
+        prices: { [lockedBranchId]: +newMeal.price }
+      }
+      const res = await api('/admin/menu', { method: 'POST', body: JSON.stringify(payload) })
+      setMenu([res.item || { ...payload, id: Date.now() }, ...menu])
+      setShowAddModal(false)
+      setNewMeal({ name: '', price: '', cat: 'Local Dishes', desc: '', img: '' })
+      say(`Dish "${payload.name}" added to menu!`)
+    } catch (err) {
+      say(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleSaveDishEdit = async () => {
+    if (!editingMeal?.name?.trim() || !editingMeal?.price) return say('Name and price are required')
+    setBusy(true)
+    try {
+      const updateData = {
+        name: editingMeal.name.trim(),
+        cat: editingMeal.cat,
+        price: +editingMeal.price,
+        desc: editingMeal.desc,
+        img: editingMeal.img,
+        prices: {
+          ...(editingMeal.prices || {}),
+          [lockedBranchId]: editingMeal.branchPrice !== '' && editingMeal.branchPrice !== undefined ? +editingMeal.branchPrice : +editingMeal.price
+        }
+      }
+      await api('/admin/menu/' + editingMeal.id, { method: 'PUT', body: JSON.stringify(updateData) })
+      setMenu(menu.map(m => m.id === editingMeal.id ? { ...m, ...updateData } : m))
+      say(`Dish "${updateData.name}" updated!`)
+      setEditingMeal(null)
+    } catch (err) {
+      say(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleDeleteDish = async (m) => {
+    if (!confirm(`Delete "${m.name}" permanently from the menu catalogue?`)) return
+    try {
+      await api('/admin/menu/' + m.id, { method: 'DELETE' })
+      setMenu(menu.filter(x => x.id !== m.id))
+      say(`Dish "${m.name}" deleted from menu`)
+    } catch (err) {
+      say(err.message)
+    }
+  }
+
   // Walk-in POS state
   const [posMealId, setPosMealId] = useState(null)
   const [posQty, setPosQty] = useState(1)
   const [posExtras, setPosExtras] = useState([])
   const [posCustName, setPosCustName] = useState('')
   const [posCustPhone, setPosCustPhone] = useState('')
+  const [posCustEmail, setPosCustEmail] = useState('')
   const [posLocation, setPosLocation] = useState('')
   const [posPayType, setPosPayType] = useState('cash')
+  const [posSubmitting, setPosSubmitting] = useState(false)
+  const [posIdempotencyKey, setPosIdempotencyKey] = useState(() => crypto.randomUUID())
 
   // New staff state for branch
-  const [newStaffName, setNewStaffName] = useState('')
-  const [newStaffRole, setNewStaffRole] = useState('Kitchen Chef')
-  const [newStaffPhone, setNewStaffPhone] = useState('')
 
   const currentBranchStatus = branchStatus?.[lockedBranchId] || {
     open: true,
@@ -149,19 +221,24 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
     staffLogout().then(() => { say('Signed out from branch portal'); go('/staff-login') }).catch(error => say(error.message))
   }
 
-  const toggleBranchOpen = () => {
+  const toggleBranchOpen = async () => {
+    const open = !currentBranchStatus.open
+    try { await api(`/admin/branches/${lockedBranchId}/controls`, { method: 'PATCH', body: JSON.stringify({ open }) }) }
+    catch (error) { return say(error.message) }
     const updated = {
       ...branchStatus,
       [lockedBranchId]: {
         ...currentBranchStatus,
-        open: !currentBranchStatus.open
+        open
       }
     }
     setBranchStatus(updated)
     say(`${currentBranch.short} kitchen is now ${!currentBranchStatus.open ? 'OPEN & ACCEPTING ORDERS' : 'PAUSED / CLOSED'}`)
   }
 
-  const saveBranchNotice = (noticeText) => {
+  const saveBranchNotice = async (noticeText) => {
+    try { await api(`/admin/branches/${lockedBranchId}/controls`, { method: 'PATCH', body: JSON.stringify({ notice: noticeText }) }) }
+    catch (error) { return say(error.message) }
     const updated = {
       ...branchStatus,
       [lockedBranchId]: {
@@ -173,7 +250,16 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
     say('Branch announcement banner updated!')
   }
 
-  const toggleDishStock = (dishId) => {
+  const toggleDishStock = async (dishId) => {
+    const meal = menu.find(item => item.id === dishId)
+    const available = !(meal?.avail?.[lockedBranchId] !== false)
+    try {
+      await api(`/kitchen/availability/${dishId}?branch=${lockedBranchId}`, {
+        method: 'PATCH', body: JSON.stringify({ status: available ? 'available' : 'sold_out' })
+      })
+      const avail = { [lockedBranchId]: available }
+      await api(`/admin/menu/${dishId}`, { method: 'PUT', body: JSON.stringify({ avail }) })
+    } catch (error) { return say(error.message) }
     setMenu(menu.map(m => {
       if (m.id === dishId) {
         const currentAvail = m.avail || { cug: true, sunyani: true }
@@ -190,7 +276,16 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
     say('Dish stock availability updated for this branch')
   }
 
-  const updateBranchPrice = (dishId, newPrice) => {
+  const updateBranchPrice = async (dishId, newPrice) => {
+    const meal = menu.find(item => item.id === dishId)
+    const numericPrice = newPrice === '' ? meal?.price : Number(newPrice)
+    if (!Number.isFinite(numericPrice) || numericPrice < 0) return say('Enter a valid price.')
+    const prices = { [lockedBranchId]: numericPrice }
+    try {
+      await api(`/admin/menu/${dishId}`, { method: 'PUT', body: JSON.stringify({ prices }) })
+      setPriceDrafts(current => { const next = { ...current }; delete next[dishId]; return next })
+    }
+    catch (error) { return say(error.message) }
     setMenu(menu.map(m => {
       if (m.id === dishId) {
         const prices = m.prices || {}
@@ -198,7 +293,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
           ...m,
           prices: {
             ...prices,
-            [lockedBranchId]: newPrice === '' ? undefined : +newPrice
+          [lockedBranchId]: numericPrice
           }
         }
       }
@@ -208,53 +303,43 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
 
   // POS Walk-in submit
   const handlePosSubmit = async () => {
+    if (posSubmitting) return
     const selectedMeal = branchMeals.find(m => m.id === posMealId) || branchMeals[0]
     if (!selectedMeal) return say('Please select a meal')
     if (!posCustName.trim()) return say('Please enter customer name or location')
+    if (posPayType === 'momo' && !/^\S+@\S+\.\S+$/.test(posCustEmail)) return say('Enter the customer email to start Paystack checkout.')
 
     const mealPrice = selectedMeal.prices?.[lockedBranchId] ?? selectedMeal.price
-    const extrasTotal = posExtras.reduce((sum, e) => sum + e.price, 0)
-    const lineTotal = (mealPrice * posQty) + extrasTotal
-
     let newOrder
+    setPosSubmitting(true)
     try {
       const result = await api('/orders', { method: 'POST', body: JSON.stringify({
         items: [{ id: selectedMeal.id, qty: posQty, extras: posExtras.map(extra => extra.id) }],
-        branch: lockedBranchId, orderType: posLocation.trim() ? 'delivery' : 'pickup',
-        name: posCustName.trim(), phone: posCustPhone.trim() || '0000000000',
-        address: posLocation.trim() || undefined, pay: posPayType
-      }) })
-      newOrder = { ...result.order, status: 1 }
-      await api(`/admin/orders/${newOrder.ref}/status`, { method: 'PATCH', body: JSON.stringify({ status: 1 }) })
+        branch: lockedBranchId, orderType: 'collection', collectionTime: 'ASAP',
+        name: posCustName.trim(), phone: posCustPhone.trim() || '0000000000', email: posCustEmail || undefined,
+        pay: posPayType, note: posLocation.trim() || undefined
+      }), headers: { 'Idempotency-Key': posIdempotencyKey } })
+      newOrder = result.order
+      if (result.checkoutUrl) {
+        window.location.assign(result.checkoutUrl)
+        return
+      }
       setOrders([newOrder, ...orders])
-    } catch (error) { return say(error.message) }
+    } catch (error) { say(error.message); return }
+    finally { setPosSubmitting(false) }
     playKitchenChime()
     say(`Walk-in order #${newOrder.ref} added to kitchen queue!`)
 
     setPosCustName('')
     setPosCustPhone('')
+    setPosCustEmail('')
     setPosLocation('')
     setPosExtras([])
     setPosQty(1)
+    setPosIdempotencyKey(crypto.randomUUID())
   }
 
   // Add staff member to this branch
-  const handleAddBranchStaff = () => {
-    if (!newStaffName.trim() || !newStaffPhone.trim()) return say('Enter staff name and phone number')
-    const added = {
-      id: Date.now(),
-      name: newStaffName.trim(),
-      role: newStaffRole,
-      branch: lockedBranchId,
-      phone: newStaffPhone.trim(),
-      active: true
-    }
-    setStaff([...staff, added])
-    setNewStaffName('')
-    setNewStaffPhone('')
-    say(`Staff "${added.name}" added to ${currentBranch.short}!`)
-  }
-
   // Filtered orders for view
   const displayedOrders = branchOrders.filter(o => {
     let matchStatus = true
@@ -300,7 +385,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
     { key: 'stock', label: 'Daily Menu & Stock' },
     { key: 'pos', label: 'Walk-In Quick POS' },
     { key: 'staff', label: 'Branch Staff' },
-    { key: 'drawer', label: 'Cash & MoMo Drawer' },
+    { key: 'drawer', label: 'Cash & Paystack Drawer' },
     { key: 'notice', label: 'Branch Notice Board' }
   ]
 
@@ -728,7 +813,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                             {o.paid ? (
                               <span className="paid-pill">Paid</span>
                             ) : o.pay === 'momo' ? (
-                              <span className="unpaid-pill">Mobile Money pending provider confirmation</span>
+                              <span className="unpaid-pill">Paystack confirmation pending</span>
                             ) : (
                               <span className="unpaid-pill">Cash</span>
                             )}
@@ -744,12 +829,18 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                             >
                               WhatsApp Kitchen
                             </a>
-                            {o.status < 4 ? (
+                            {o.orderStatus === 'pending_payment' ? (
+                              <span className="unpaid-pill">Awaiting Paystack payment</span>
+                            ) : o.status === 3 && o.orderType === 'delivery' ? (
+                              <button className="btn-pbd-advance" onClick={() => go('/delivery')}>Open Delivery Desk →</button>
+                            ) : o.status < 4 ? (
                               <button
                                 className="btn-pbd-advance"
-                                onClick={() => {
-                                  setStatus(o.ref, o.status + 1)
-                                  say(`Moved to ${STATUSES[o.status + 1]?.label || 'Next'}`)
+                                onClick={async () => {
+                                  try {
+                                    await setStatus(o.ref, o.status + 1)
+                                    say(`Moved to ${STATUSES[o.status + 1]?.label || 'Next'}`)
+                                  } catch { /* The provider already reports the server error. */ }
                                 }}
                               >
                                 {getNextLabel(o.status)}
@@ -771,12 +862,20 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
               <div className="pbd-white-card">
                 <div className="pbd-card-head-row">
                   <div>
-                    <h3>{currentBranch.short} Daily Menu & Stock Control</h3>
+                    <h3>{currentBranch.short} Daily Menu, Prices & Stock Control</h3>
                     <p className="muted small">
-                      Mark dishes In Stock or Sold Out for {currentBranch.short}. Set custom branch prices.
+                      Set {currentBranch.short} prices and daily stock. Catalogue changes are available to owners.
                     </p>
                   </div>
-                  <span className="branch-pill-tag">{branchMeals.length} Dishes Available</span>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <span className="branch-pill-tag">{branchMeals.length} Dishes</span>
+                    {staffUser?.role === 'Owner' && <button
+                      onClick={() => setShowAddModal(true)}
+                      style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '8px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+                    >
+                      + Add New Dish
+                    </button>}
+                  </div>
                 </div>
 
                 <div className="pbd-table-wrap mt-3">
@@ -789,11 +888,11 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                         <th>Base Price</th>
                         <th>{currentBranch.short} Price</th>
                         <th>Stock Status</th>
-                        <th>Action</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {branchMeals.map(m => {
+                      {menu.map(m => {
                         const isSoldOut = m.avail && m.avail[lockedBranchId] === false
                         const branchPrice = m.prices?.[lockedBranchId] ?? ''
 
@@ -821,8 +920,9 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                                 <input
                                   type="number"
                                   placeholder={m.price}
-                                  value={branchPrice}
-                                  onChange={e => updateBranchPrice(m.id, e.target.value)}
+                                  value={priceDrafts[m.id] ?? branchPrice}
+                                  onChange={e => setPriceDrafts(current => ({ ...current, [m.id]: e.target.value }))}
+                                  onBlur={e => { if ((e.target.value === '' && branchPrice !== '') || (e.target.value !== '' && Number(e.target.value) !== Number(branchPrice || m.price))) updateBranchPrice(m.id, e.target.value) }}
                                   className="pbd-mini-input"
                                   title="Leave empty to use base price"
                                 />
@@ -834,12 +934,32 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                               </span>
                             </td>
                             <td>
-                              <button
-                                className={`btn-stock-toggle ${isSoldOut ? 'btn-restock' : 'btn-mark-sold'}`}
-                                onClick={() => toggleDishStock(m.id)}
-                              >
-                                {isSoldOut ? 'Mark In Stock' : 'Mark Sold Out'}
-                              </button>
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                <button
+                                  className={`btn-stock-toggle ${isSoldOut ? 'btn-restock' : 'btn-mark-sold'}`}
+                                  style={{ padding: '4px 8px', fontSize: '12px' }}
+                                  onClick={() => toggleDishStock(m.id)}
+                                >
+                                  {isSoldOut ? 'Restore' : 'Sold Out'}
+                                </button>
+                                {staffUser?.role === 'Owner' && <>
+                                <button
+                                  style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 700 }}
+                                  onClick={() => setEditingMeal({
+                                    ...m,
+                                    branchPrice: m.prices?.[lockedBranchId] ?? m.price
+                                  })}
+                                >
+                                  ✏️ Edit
+                                </button>
+                                <button
+                                  className="btn-del-sm"
+                                  style={{ padding: '4px 8px', fontSize: '12px' }}
+                                  onClick={() => handleDeleteDish(m)}
+                                >
+                                  🗑️ Delete
+                                </button></>}
+                              </div>
                             </td>
                           </tr>
                         )
@@ -847,6 +967,173 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                     </tbody>
                   </table>
                 </div>
+
+                {/* ADD MEAL MODAL */}
+                {showAddModal && (
+                  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}>
+                    <div style={{ background: '#fff', borderRadius: '14px', width: '100%', maxWidth: '520px', padding: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
+                      <h3 style={{ margin: '0 0 14px 0', fontSize: '18px', fontWeight: 800, color: '#1e293b' }}>
+                        + Add New Dish to Menu
+                      </h3>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div>
+                          <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Meal Name *</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Fufu with Goat Light Soup"
+                            value={newMeal.name}
+                            onChange={e => setNewMeal({ ...newMeal, name: e.target.value })}
+                            style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                          />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                          <div>
+                            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Category</label>
+                            <select
+                              value={newMeal.cat}
+                              onChange={e => setNewMeal({ ...newMeal, cat: e.target.value })}
+                              style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                            >
+                              {cats.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Price (GH₵) *</label>
+                            <input
+                              type="number"
+                              placeholder="45"
+                              value={newMeal.price}
+                              onChange={e => setNewMeal({ ...newMeal, price: e.target.value })}
+                              style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Photo URL (Optional)</label>
+                          <input
+                            type="text"
+                            placeholder="https://..."
+                            value={newMeal.img}
+                            onChange={e => setNewMeal({ ...newMeal, img: e.target.value })}
+                            style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Description</label>
+                          <textarea
+                            rows="2"
+                            placeholder="Description..."
+                            value={newMeal.desc}
+                            onChange={e => setNewMeal({ ...newMeal, desc: e.target.value })}
+                            style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '18px' }}>
+                        <button
+                          onClick={() => setShowAddModal(false)}
+                          style={{ background: '#f1f5f9', color: '#475569', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          disabled={busy}
+                          onClick={handleAddDish}
+                          style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: '6px', fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          {busy ? 'Saving...' : 'Add Dish'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* EDIT MEAL MODAL */}
+                {editingMeal && (
+                  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}>
+                    <div style={{ background: '#fff', borderRadius: '14px', width: '100%', maxWidth: '520px', padding: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
+                      <h3 style={{ margin: '0 0 14px 0', fontSize: '18px', fontWeight: 800, color: '#1e293b' }}>
+                        ✏️ Edit Dish · {editingMeal.name}
+                      </h3>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div>
+                          <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Meal Name</label>
+                          <input
+                            type="text"
+                            value={editingMeal.name}
+                            onChange={e => setEditingMeal({ ...editingMeal, name: e.target.value })}
+                            style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                          />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                          <div>
+                            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Category</label>
+                            <select
+                              value={editingMeal.cat}
+                              onChange={e => setEditingMeal({ ...editingMeal, cat: e.target.value })}
+                              style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                            >
+                              {cats.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Base Price (GH₵)</label>
+                            <input
+                              type="number"
+                              value={editingMeal.price}
+                              onChange={e => setEditingMeal({ ...editingMeal, price: e.target.value })}
+                              style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '12px', fontWeight: 700, color: '#0284c7' }}>
+                            {currentBranch.short} Price (GH₵)
+                          </label>
+                          <input
+                            type="number"
+                            value={editingMeal.branchPrice ?? editingMeal.price}
+                            onChange={e => setEditingMeal({ ...editingMeal, branchPrice: e.target.value })}
+                            style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1.5px solid #0284c7', marginTop: '4px' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Description</label>
+                          <textarea
+                            rows="2"
+                            value={editingMeal.desc || ''}
+                            onChange={e => setEditingMeal({ ...editingMeal, desc: e.target.value })}
+                            style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Photo URL</label>
+                          <input
+                            type="text"
+                            value={editingMeal.img || ''}
+                            onChange={e => setEditingMeal({ ...editingMeal, img: e.target.value })}
+                            style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '18px' }}>
+                        <button
+                          onClick={() => setEditingMeal(null)}
+                          style={{ background: '#f1f5f9', color: '#475569', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          disabled={busy}
+                          onClick={handleSaveDishEdit}
+                          style={{ background: '#0284c7', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: '6px', fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          {busy ? 'Saving...' : 'Save Changes'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -900,7 +1187,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                           className="pbd-select full-width"
                         >
                           <option value="cash">Cash on Counter</option>
-                          <option value="momo">MTN / Telecel MoMo</option>
+                          <option value="momo">Paystack (MoMo / Card)</option>
                         </select>
                       </label>
                     </div>
@@ -952,18 +1239,28 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                       </label>
                     </div>
 
+                    {posPayType === 'momo' && <label className="mt-2 block">
+                      <span className="field-label-small">Customer Email for Paystack Receipt *</span>
+                      <input type="email" required placeholder="customer@example.com" value={posCustEmail} onChange={e => setPosCustEmail(e.target.value)} className="pbd-input full-width" />
+                    </label>}
+
                     <label className="mt-2 block">
-                      <span className="field-label-small">Delivery Location / Table (Optional)</span>
+                      <span className="field-label-small">Collection note / table (Optional)</span>
                       <input
-                        placeholder="e.g. Hall 2 Annex Room 14 (or leave blank for Counter Pickup)"
+                        placeholder="e.g. Table 4 or customer pickup note"
                         value={posLocation}
                         onChange={e => setPosLocation(e.target.value)}
                         className="pbd-input full-width"
                       />
                     </label>
 
-                    <button className="btn-pos-submit mt-3" onClick={handlePosSubmit}>
-                      Dispatch Walk-In Order to Kitchen →
+                    {posPayType === 'momo' && <label className="mt-2 block">
+                      <span className="field-label-small">Customer email for Paystack checkout</span>
+                      <input type="email" value={posCustEmail} onChange={e => setPosCustEmail(e.target.value)} className="pbd-input full-width" placeholder="customer@example.com" />
+                    </label>}
+
+                    <button className="btn-pos-submit mt-3" onClick={handlePosSubmit} disabled={posSubmitting}>
+                      {posSubmitting ? 'Submitting…' : 'Dispatch Walk-In Order to Kitchen →'}
                     </button>
                   </div>
 
@@ -979,7 +1276,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                       <hr className="ticket-divider" />
                       <div className="paper-body">
                         <p><b>Customer:</b> {posCustName || 'Counter Guest'}</p>
-                        <p><b>Location:</b> {posLocation || 'Counter Pickup'}</p>
+                        <p><b>Collection:</b> {posLocation || 'Counter Pickup'}</p>
                         <p><b>Phone:</b> {posCustPhone || 'Walk-In'}</p>
                         <hr className="ticket-divider" />
                         {posMealId ? (
@@ -1006,7 +1303,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                                     <span>Total:</span>
                                     <b>{money(total)}</b>
                                   </div>
-                                  <span className="paper-pay">Payment: {posPayType === 'cash' ? 'Cash' : 'MoMo'}</span>
+                                  <span className="paper-pay">Payment: {posPayType === 'cash' ? 'Cash' : 'Paystack'}</span>
                                 </>
                               )
                             })()}
@@ -1033,33 +1330,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                   </div>
                 </div>
 
-                <div className="branch-add-staff-strip mt-2">
-                  <input
-                    placeholder="Staff Member Name"
-                    value={newStaffName}
-                    onChange={e => setNewStaffName(e.target.value)}
-                    className="pbd-input"
-                  />
-                  <select
-                    value={newStaffRole}
-                    onChange={e => setNewStaffRole(e.target.value)}
-                    className="pbd-select"
-                  >
-                    <option value="Kitchen Chef">Kitchen Chef</option>
-                    <option value="Cashier">Cashier</option>
-                    <option value="Manager">Kitchen Supervisor</option>
-                    <option value="Delivery Rider">Delivery Rider</option>
-                  </select>
-                  <input
-                    placeholder="Phone (024 123 4567)"
-                    value={newStaffPhone}
-                    onChange={e => setNewStaffPhone(e.target.value)}
-                    className="pbd-input"
-                  />
-                  <button className="btn-pbd-action" onClick={handleAddBranchStaff}>
-                    + Assign to {currentBranch.short}
-                  </button>
-                </div>
+                <p className="muted small mt-2">Staff accounts and passwords are managed in Staff Management. This list shows saved accounts assigned to this branch.</p>
 
                 <div className="branch-staff-grid mt-3">
                   {branchStaffList.map(s => {
@@ -1081,9 +1352,13 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                             <input
                               type="checkbox"
                               checked={s.active}
-                              onChange={() => {
-                                setStaff(staff.map(x => x.id === s.id ? { ...x, active: !x.active } : x))
-                                say(`Staff status updated`)
+                              disabled={staffUser?.role !== 'Owner'}
+                              onChange={async () => {
+                                try {
+                                  const { staff: updated } = await api(`/admin/staff/${s.id}`, { method: 'PATCH', body: JSON.stringify({ active: !s.active }) })
+                                  setStaff(staff.map(x => x.id === s.id ? updated : x))
+                                  say('Staff status saved')
+                                } catch (error) { say(error.message) }
                               }}
                             />
                             <span className="pbd-slider" />
@@ -1107,12 +1382,12 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
               </div>
             )}
 
-            {/* SECTION 6: CASH & MOMO DRAWER */}
+            {/* SECTION 6: CASH & PAYSTACK DRAWER */}
             {activeSection === 'drawer' && (
               <div className="pbd-white-card">
                 <div className="pbd-card-head-row">
                   <div>
-                    <h3>Cash Drawer & MoMo Ledger ({currentBranch.short})</h3>
+                    <h3>Cash Drawer & Paystack Ledger ({currentBranch.short})</h3>
                     <p className="muted small">
                       Physical cash in the branch drawer vs Mobile Money payments verified today.
                     </p>
@@ -1130,7 +1405,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                   <div className="drawer-card momo">
                     <span className="drawer-lbl">Mobile Money (MTN / Telecel)</span>
                     <b className="drawer-val">{money(momoTotal)}</b>
-                    <small>{completedOrders.filter(o => o.pay === 'momo').length} MoMo Orders Verified</small>
+                    <small>{completedOrders.filter(o => o.pay === 'momo').length} Paystack Orders Verified</small>
                   </div>
                 </div>
 
@@ -1153,7 +1428,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                           <td><b>#{o.ref}</b></td>
                           <td>{o.name} ({o.phone})</td>
                           <td>{o.time || '12:00'}</td>
-                          <td>{o.pay === 'momo' ? 'Mobile Money (MoMo)' : 'Cash'}</td>
+                          <td>{o.pay === 'momo' ? 'Paystack' : 'Cash'}</td>
                           <td><b>{money(o.total)}</b></td>
                           <td>
                             <span className={`ticket-paid-tag ${o.paid ? 'paid' : 'unpaid'}`}>

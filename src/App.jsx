@@ -6,6 +6,7 @@ import Admin from './pages/Admin.jsx'
 import BranchDashboard from './pages/BranchDashboard.jsx'
 import KitchenDashboard from './pages/kitchen/KitchenDashboard.jsx'
 import DeliveryDashboard from './pages/delivery/DeliveryDashboard.jsx'
+import DashboardsDirectory from './pages/admin/DashboardsDirectory.jsx'
 
 function StaffLoginPage() {
   const { staffLogin, say } = useApp()
@@ -15,7 +16,13 @@ function StaffLoginPage() {
   const signIn = async event => {
     event.preventDefault()
     setBusy(true)
-    try { await staffLogin(email, password); go('/admin/overview') }
+    try {
+      const session = await staffLogin(email, password)
+      if (session.role === 'Kitchen') go('/kitchen')
+      else if (session.role === 'Driver') go('/delivery')
+      else if (session.role === 'Cashier') go('/branch/' + (session.assignedBranch === 'sunyani' ? 'sunyani' : 'cug'))
+      else go('/admin/overview')
+    }
     catch (error) { say(error.message) }
     finally { setBusy(false) }
   }
@@ -47,9 +54,10 @@ export default function App() {
   if (seg[0] === 'kitchen') {
     if (!authReady) return <div className="wrap sec">Checking kitchen session…</div>
     if (!staffUser) return <><StaffLoginPage />{toast && <div className="toast-pill">{toast}</div>}</>
+    if (!['Owner', 'Manager', 'Kitchen'].includes(staffUser.role)) return <div className="wrap sec"><h1>Kitchen access restricted</h1><p>Your staff role cannot manage kitchen orders.</p></div>
     return (
       <>
-        <KitchenDashboard branchId={seg[1] || staffUser.assignedBranch || 'cug'} />
+        <KitchenDashboard branchId={staffUser.role === 'Owner' || staffUser.assignedBranch === 'all' ? (seg[1] || 'cug') : staffUser.assignedBranch} staffUser={staffUser} />
         {toast && <div className="toast-pill">{toast}</div>}
       </>
     )
@@ -59,9 +67,10 @@ export default function App() {
   if (seg[0] === 'delivery') {
     if (!authReady) return <div className="wrap sec">Checking rider session…</div>
     if (!staffUser) return <><StaffLoginPage />{toast && <div className="toast-pill">{toast}</div>}</>
+    if (!['Owner', 'Manager', 'Driver'].includes(staffUser.role)) return <div className="wrap sec"><h1>Delivery access restricted</h1><p>Your staff role cannot manage deliveries.</p></div>
     return (
       <>
-        <DeliveryDashboard branchId={seg[1] || staffUser.assignedBranch || 'all'} />
+        <DeliveryDashboard branchId={staffUser.role === 'Owner' || staffUser.assignedBranch === 'all' ? (seg[1] || 'all') : staffUser.assignedBranch} staffUser={staffUser} />
         {toast && <div className="toast-pill">{toast}</div>}
       </>
     )
@@ -71,6 +80,7 @@ export default function App() {
   if (seg[0] === 'admin') {
     if (!authReady) return <div className="wrap sec">Checking staff session…</div>
     if (!staffUser) return <><StaffLoginPage />{toast && <div className="toast-pill">{toast}</div>}</>
+    if (!['Owner', 'Manager'].includes(staffUser.role)) return <div className="wrap sec"><h1>Admin access restricted</h1><p>Your staff role cannot open administration.</p></div>
     return (
       <>
         <Admin section={seg[1]} />
@@ -83,6 +93,7 @@ export default function App() {
   if (seg[0] === 'branch') {
     if (!authReady) return <div className="wrap sec">Checking staff session…</div>
     if (!staffUser) return <><StaffLoginPage />{toast && <div className="toast-pill">{toast}</div>}</>
+    if (!['Owner', 'Manager'].includes(staffUser.role)) return <div className="wrap sec"><h1>Branch access restricted</h1><p>Your staff role cannot manage branch settings.</p></div>
     const branchTarget = seg[1] === 'sunyani' ? 'sunyani' : 'cug'
     if (staffUser.assignedBranch && staffUser.assignedBranch !== 'all' && staffUser.assignedBranch !== branchTarget) {
       return <div className="wrap sec"><h1>Branch access restricted</h1><p>Your staff account is assigned to another branch.</p></div>
@@ -151,6 +162,7 @@ export default function App() {
   else if (seg[0] === 'login') pageContent = <SignIn />
   else if (seg[0] === 'signup') pageContent = <SignUp />
   else if (seg[0] === 'community') pageContent = <Community />
+  else if (seg[0] === 'dashboards' || seg[0] === 'portals') pageContent = <DashboardsDirectory />
   else pageContent = <div className="wrap sec"><p className="empty-subtext">Page not found.</p></div>
 
   return (
@@ -168,6 +180,9 @@ export default function App() {
               <Link to="/community" className={seg[0] === 'community' ? 'active' : ''}>Community</Link>
               <Link to="/track" className={seg[0] === 'track' ? 'active' : ''}>Track Order</Link>
               <Link to="/account" className={seg[0] === 'account' ? 'active' : ''}>{user ? 'Account' : 'Log in'}</Link>
+              <Link to="/dashboards" className={['dashboards', 'admin', 'branch', 'kitchen', 'delivery'].includes(seg[0]) ? 'active staff-portal-btn' : 'staff-portal-btn'}>
+                💼 Staff Dashboards
+              </Link>
             </div>
 
             <div className="top-nav-right-actions">
