@@ -40,15 +40,26 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173,ht
   .split(',')
   .map(x => x.trim())
 app.use(cors({ origin: (origin, callback) => callback(null, !origin || allowedOrigins.includes(origin)), credentials: true }))
-app.use(express.json({
-  limit: '1mb',
+const defaultJsonParser = express.json({
+  limit: '32kb',
   verify(req, _res, buffer) {
     if (req.originalUrl.startsWith('/api/payments/paystack/webhook')) req.rawBody = Buffer.from(buffer)
   }
-}))
+})
+app.use((req, res, next) => {
+  if (req.path === '/api/auth/profile') return next()
+  defaultJsonParser(req, res, next)
+})
 app.use(cookieParser())
-app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false }))
-app.use('/api/orders', rateLimit({ windowMs: 60 * 1000, limit: 40, standardHeaders: 'draft-8', legacyHeaders: false }))
+app.use('/api/auth', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: process.env.NODE_ENV === 'development' ? 500 : 100,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  skip: req => req.method === 'GET',
+  message: { error: 'Too many authentication attempts. Please try again in a few minutes.' }
+}))
+app.use('/api/orders', rateLimit({ windowMs: 60 * 1000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false }))
 
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
 const publicUser = user => ({
@@ -63,7 +74,10 @@ const publicUser = user => ({
   active: user.active !== false,
   welcomeVoucherUsed: Boolean(user.welcomeVoucherUsedAt)
 })
-const authBody = z.object({ email: z.string().email().max(254), password: z.string().min(8).max(128) })
+const authBody = z.object({
+  email: z.string().trim().email('Enter a valid email address').max(254),
+  password: z.string().min(1, 'Password is required').max(128)
+})
 
 const getTodayString = () => new Date().toISOString().slice(0, 10)
 const capacityOrderStatuses = ['pending_payment', 'confirmed', 'preparing', 'ready_for_collection', 'ready_for_dispatch', 'out_for_delivery']
@@ -217,28 +231,34 @@ app.get('/api/public/bootstrap', asyncRoute(async (_req, res) => {
 // Auth Routes
 app.post('/api/auth/signup', asyncRoute(async (req, res) => {
   const body = z.object({
-    name: z.string().trim().min(2).max(100),
-    phone: z.string().regex(/^\+?[0-9 ()-]{9,18}$/),
+    name: z.string().trim().min(2, 'Full name must be at least 2 characters').max(100),
+    phone: z.string().trim().regex(/^\+?[0-9 ()-]{9,18}$/, 'Enter a valid phone number (at least 9 digits)'),
     branch: z.enum(['cug', 'sunyani']).optional(),
-    email: z.string().email().max(254),
-    password: z.string().min(8).max(128)
+    email: z.string().trim().email('Enter a valid email address').max(254),
+    password: z.string().min(8, 'Password must contain at least 8 characters').max(128)
   }).parse(req.body)
 
   const email = body.email.toLowerCase()
   if (await User.exists({ email })) return res.status(409).json({ error: 'An account with this email already exists' })
 
   const user = await User.create({
-    ...body,
+    name: body.name,
     email,
+    phone: body.phone,
+    assignedBranch: body.branch || 'cug',
     passwordHash: await bcrypt.hash(body.password, 12),
     role: 'customer'
   })
 
   // Auto-claim any previous guest orders for this phone number
-  await Order.updateMany(
-    { phone: body.phone, customerId: { $exists: false } },
-    { $set: { customerId: user._id, isGuest: false } }
-  )
+  try {
+    await Order.updateMany(
+      { phone: body.phone, $or: [{ customerId: { $exists: false } }, { customerId: null }] },
+      { $set: { customerId: user._id, isGuest: false } }
+    )
+  } catch (claimErr) {
+    console.error('Failed to claim guest orders:', claimErr)
+  }
 
   issueSession(res, user)
   res.status(201).json({ user: publicUser(user) })
@@ -266,13 +286,24 @@ app.post('/api/auth/staff-login', asyncRoute(async (req, res) => {
 
 app.get('/api/auth/me', requireAuth, (req, res) => res.json({ user: publicUser(req.user) }))
 
-app.put('/api/auth/profile', requireAuth, asyncRoute(async (req, res) => {
+app.put('/api/auth/profile', express.json({ limit: '1mb' }), requireAuth, asyncRoute(async (req, res) => {
   if (req.user.role !== 'customer') return res.status(403).json({ error: 'Customer profile access required' })
   const body = z.object({
     name: z.string().trim().min(2).max(100),
     phone: z.string().regex(/^\+?[0-9 ()-]{9,18}$/),
     branch: z.enum(['cug', 'sunyani']).optional(),
-    profileImage: z.string().max(900_000).optional().refine(value => value === undefined || value === '' || /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/.test(value), 'Use a JPEG, PNG or WebP profile picture')
+    profileImage: z.string().max(1_200_023).optional().refine(value => {
+      if (value === undefined || value === '') return true
+      const match = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value)
+      if (!match) return false
+      const [, mime, encoded] = match
+      const data = Buffer.from(encoded, 'base64')
+      if (data.length > 900_000 || data.toString('base64') !== encoded) return false
+      const isJpeg = data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff
+      const isPng = data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+      const isWebp = data.toString('ascii', 0, 4) === 'RIFF' && data.toString('ascii', 8, 12) === 'WEBP'
+      return (mime === 'jpeg' && isJpeg) || (mime === 'png' && isPng) || (mime === 'webp' && isWebp)
+    }, 'Use a valid JPEG, PNG or WebP profile picture under 900 KB')
   }).parse(req.body)
   const user = await User.findByIdAndUpdate(req.user.id, { $set: body }, { new: true }).select('-passwordHash')
   res.json({ user: publicUser(user) })
@@ -474,7 +505,14 @@ app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
   // Claim the welcome voucher once per registered customer, after capacity checks.
   if (isWelcomeVoucher) {
     const claimed = await User.updateOne(
-      { _id: req.user.id, role: 'customer', welcomeVoucherUsedAt: { $exists: false } },
+      {
+        _id: req.user.id,
+        role: 'customer',
+        $or: [
+          { welcomeVoucherUsedAt: { $exists: false } },
+          { welcomeVoucherUsedAt: null }
+        ]
+      },
       { $set: { welcomeVoucherUsedAt: new Date() } }
     )
     if (!claimed.modifiedCount) {

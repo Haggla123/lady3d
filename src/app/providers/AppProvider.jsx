@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, useRef } from 'react'
 import { MENU, REVIEWS, PROMO_CODES, priceAt, DEFAULT_DELIVERY_ZONES } from '../../data.js'
 import { api } from '../../services/api/client.js'
 import { money } from '../../utils/money.js'
@@ -88,9 +88,48 @@ export function AppProvider({ children }) {
     sunyani: { open: true, notice: 'Town branch open daily', supervisor: 'Mr. Ernest Kwaku' }
   })
 
-  const say = text => {
-    setToast(text)
-    setTimeout(() => setToast(''), 4000)
+  const toastTimerRef = useRef(null)
+
+  const say = (input, options = {}) => {
+    let payload = {}
+    if (typeof input === 'string') {
+      const lower = input.toLowerCase()
+      const isError = lower.includes('fail') || 
+                      lower.includes('error') || 
+                      lower.includes('invalid') ||
+                      lower.includes('cannot') ||
+                      lower.includes('restricted')
+      const isBasket = lower.includes('basket') || lower.includes('cart')
+      
+      payload = {
+        id: Date.now() + Math.random(),
+        title: options.title || (isBasket ? 'Added to Basket' : isError ? 'Attention' : 'Success'),
+        message: input,
+        type: options.type || (isBasket ? 'basket' : isError ? 'error' : 'success'),
+        actionLabel: options.actionLabel || (isBasket ? 'View Basket' : ''),
+        actionPath: options.actionPath || (isBasket ? '/cart' : '')
+      }
+    } else if (typeof input === 'object' && input !== null) {
+      payload = {
+        id: Date.now() + Math.random(),
+        title: input.title || (input.type === 'basket' ? 'Added to Basket' : input.type === 'error' ? 'Notice' : 'Success'),
+        message: input.message || '',
+        type: input.type || 'success',
+        actionLabel: input.actionLabel || '',
+        actionPath: input.actionPath || ''
+      }
+    }
+
+    setToast(payload)
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null)
+    }, options.duration || 4500)
+  }
+
+  const dismissToast = () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    setToast(null)
   }
 
   // Load public bootstrap data and session
@@ -232,7 +271,16 @@ export function AppProvider({ children }) {
         }
       ]
     })
-    say('Added to basket')
+
+    const meal = (menu || []).find(m => m.id === id)
+    const mealName = meal?.name || 'Item'
+    say({
+      title: 'Added to Basket',
+      message: `${q > 1 ? q + 'x ' : ''}${mealName} added to basket successfully.`,
+      type: 'basket',
+      actionLabel: 'View Basket',
+      actionPath: '/cart'
+    })
   }
 
   const setQty = (lineIdentifier, q) => setCart(c =>
@@ -299,15 +347,19 @@ export function AppProvider({ children }) {
   }
 
   const setLoyaltyRules = async rules => {
-    setLoyaltyRulesState(rules)
     await api('/admin/state/loyaltyRules', { method: 'PUT', body: JSON.stringify({ value: rules }) })
     if (Number.isFinite(rules.promoDiscount)) {
       const welcomePromo = promos.find(promo => promo.code?.toUpperCase() === 'WELCOME20')
-      if (welcomePromo) {
-        const { promo } = await api(`/admin/promos/${welcomePromo.id}`, { method: 'PATCH', body: JSON.stringify({ discount: Math.min(0.8, Math.max(0, rules.promoDiscount / 100)) }) })
-        setPromos(rows => rows.map(row => row.id === promo.id ? promo : row))
+      const targetId = welcomePromo ? (welcomePromo.id || welcomePromo._id || 'WELCOME20') : 'WELCOME20'
+      const { promo } = await api(`/admin/promos/${targetId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ discount: Math.min(0.8, Math.max(0, rules.promoDiscount / 100)) })
+      })
+      if (promo) {
+        setPromos(rows => rows.map(row => (row.id === promo.id || row._id === promo._id || row.code?.toUpperCase() === 'WELCOME20') ? { ...row, ...promo, id: promo.id || promo._id } : row))
       }
     }
+    setLoyaltyRulesState(rules)
   }
 
   const removePromo = () => {
@@ -435,7 +487,7 @@ export function AppProvider({ children }) {
     points, setPoints,
     reviews, setReviews,
     votes, setVotes, voted, setVoted,
-    toast, say,
+    toast, say, dismissToast,
     promos, setPromos,
     loyaltyRules, setLoyaltyRules,
     promoCode, setPromoCode, promoError, applyPromo, removePromo,

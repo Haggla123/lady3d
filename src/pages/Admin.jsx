@@ -1183,9 +1183,16 @@ function Staff() {
   const handleSaveStaff = async () => {
     if (!editingStaff.name.trim() || !editingStaff.email.trim() || !editingStaff.phone.trim()) return say('Enter the staff name, email and phone number')
     if (editingStaff.password && editingStaff.password.length < 10) return say('Use a temporary password with at least 10 characters')
-    const { password, ...details } = editingStaff
+    const payload = {
+      name: editingStaff.name.trim(),
+      email: editingStaff.email.trim(),
+      phone: editingStaff.phone.trim(),
+      role: editingStaff.role,
+      branch: editingStaff.branch,
+      ...(editingStaff.password ? { password: editingStaff.password } : {})
+    }
     try {
-      const { staff: updated } = await api(`/admin/staff/${editingStaff.id}`, { method: 'PATCH', body: JSON.stringify({ ...details, ...(password ? { password } : {}) }) })
+      const { staff: updated } = await api(`/admin/staff/${editingStaff.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
       setStaff(rows => rows.map(row => row.id === updated.id ? updated : row))
       setEditingStaff(null)
       say(`Updated ${updated.name}'s account.`)
@@ -1308,6 +1315,10 @@ function Loyalty() {
   const [rules, setRules] = useState(loyaltyRules)
 
   const handleSave = async () => {
+    if (!Number.isFinite(rules.spendPerPoint) || rules.spendPerPoint < 1 || !Number.isFinite(rules.rewardThreshold) || rules.rewardThreshold < 1) {
+      say('Spend per point and reward threshold must both be at least 1.')
+      return
+    }
     try {
       await setLoyaltyRules(rules)
       say('Loyalty & reward rules saved!')

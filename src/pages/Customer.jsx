@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, go, money, useApp } from '../store.jsx'
 import { Link, Food, DishCard, BranchPicker, Stars, CategoryIcon } from '../components/ui.jsx'
 import { STATUSES, BRANCHES, CATEGORIES_WITH_ICONS, EXTRAS, buildOrderWhatsAppUrl } from '../data.js'
@@ -1477,7 +1477,10 @@ export function SignIn() {
 
   const handleSignIn = (e) => {
     e.preventDefault()
-    api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
+    const cleanEmail = email.trim().toLowerCase()
+    if (!cleanEmail) return say('Please enter your email address')
+    if (!password) return say('Please enter your password')
+    api('/auth/login', { method: 'POST', body: JSON.stringify({ email: cleanEmail, password }) })
       .then(({ user: account }) => {
         loginUser(account)
         if (account.role === 'Kitchen') go('/kitchen')
@@ -1598,12 +1601,26 @@ export function SignUp() {
 
   const handleSignUp = (e) => {
     e.preventDefault()
-    if (!name.trim()) return say('Please enter your full name')
-    if (!email.trim() || !email.includes('@')) return say('Please enter a valid email address')
-    if (!phone.trim() || phone.length < 9) return say('Please enter a valid 10-digit phone number')
-    if (!password || password.length < 10) return say('Use a password with at least 10 characters')
+    const cleanName = name.trim()
+    const cleanEmail = email.trim().toLowerCase()
+    const cleanPhone = phone.trim()
+
+    if (!cleanName) return say('Please enter your full name')
+    if (!cleanEmail || !cleanEmail.includes('@')) return say('Please enter a valid email address')
+    if (!cleanPhone || cleanPhone.length < 9) return say('Please enter a valid phone number (at least 9 digits)')
+    if (!password || password.length < 8) return say('Use a password with at least 8 characters')
     if (!agreed) return say('Please agree to terms to register')
-    api('/auth/signup', { method: 'POST', body: JSON.stringify({ name, email, phone, branch: selectedBranch, password }) })
+
+    api('/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: cleanName,
+        email: cleanEmail,
+        phone: cleanPhone,
+        branch: selectedBranch || 'cug',
+        password
+      })
+    })
       .then(({ user: account }) => { loginUser(account); say('Your account is ready.'); go('/account') })
       .catch(error => say(error.message))
   }
@@ -1653,7 +1670,7 @@ export function SignUp() {
               type="tel"
               value={phone}
               onChange={e => setPhone(e.target.value)}
-              placeholder="0241234567"
+              placeholder="e.g. 0241234567"
               required
             />
           </label>
@@ -1686,7 +1703,7 @@ export function SignUp() {
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={e => setPassword(e.target.value)}
-              placeholder="At least 6 characters"
+              placeholder="At least 8 characters"
               required
             />
           </label>
@@ -1721,8 +1738,13 @@ export function Account() {
   const { user, logoutUser, orders, favs, menu, points, say, canInstall, installPwa, updateProfile, loyaltyRules, api } = useApp()
   const [tab, setTab] = useState('orders')
   const [profile, setProfile] = useState({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '', branch: user?.branch || 'cug', profileImage: user?.profileImage || '' })
+  const profileUserId = useRef(user?.id)
   const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
-  useEffect(() => setProfile({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '', branch: user?.branch || 'cug', profileImage: user?.profileImage || '' }), [user])
+  useEffect(() => {
+    if (profileUserId.current === user?.id) return
+    profileUserId.current = user?.id
+    setProfile({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '', branch: user?.branch || 'cug', profileImage: user?.profileImage || '' })
+  }, [user?.id])
 
   const handlePictureSelect = event => {
     const file = event.target.files?.[0]
@@ -1739,7 +1761,11 @@ export function Account() {
       canvas.width = 512
       canvas.height = 512
       canvas.getContext('2d').drawImage(image, left, top, side, side, 0, 0, 512, 512)
-      setProfile(current => ({ ...current, profileImage: canvas.toDataURL('image/webp', 0.82) }))
+      let dataUrl = canvas.toDataURL('image/webp', 0.82)
+      if (!dataUrl.startsWith('data:image/webp;')) {
+        dataUrl = canvas.toDataURL('image/jpeg', 0.82)
+      }
+      setProfile(current => ({ ...current, profileImage: dataUrl }))
       URL.revokeObjectURL(source)
     }
     image.onerror = () => { URL.revokeObjectURL(source); say('That image could not be opened. Choose a JPEG, PNG or WebP image.') }
@@ -1937,7 +1963,7 @@ export function Account() {
             <span><b>Profile picture</b><small>Upload a square or portrait image</small></span>
             <input type="file" accept="image/*" onChange={handlePictureSelect} />
           </label>
-          {profile.profileImage && <button className="account-remove-picture" onClick={() => setProfile({ ...profile, profileImage: '' })}>Remove profile picture</button>}
+          {profile.profileImage && <button type="button" className="account-remove-picture" onClick={() => setProfile({ ...profile, profileImage: '' })}>Remove profile picture</button>}
           <label className="input-field-wrap">
             <span>Name</span>
             <input value={profile.name} onChange={e => setProfile({ ...profile, name: e.target.value })} />

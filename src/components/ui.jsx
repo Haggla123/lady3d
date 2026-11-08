@@ -561,3 +561,80 @@ export function MobileTopNav({ activePath = '/' }) {
   )
 }
 
+
+
+export function ActionToast() {
+  const { toast, dismissToast } = useApp()
+  if (!toast) return null
+
+  const isObject = typeof toast === 'object' && toast !== null
+  const title = isObject ? (toast.title || '') : ''
+  const message = isObject ? (toast.message || '') : String(toast)
+  const type = isObject ? (toast.type || 'success') : 'success'
+  const actionLabel = isObject ? toast.actionLabel : null
+  const actionPath = isObject ? toast.actionPath : null
+
+  return (
+    <div className="action-toast-portal">
+      <div className={`action-toast-card toast-${type}`} role="alert" aria-live="assertive">
+        <div className="action-toast-icon-wrap">
+          {type === 'basket' ? (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/>
+              <path d="M3 6h18"/>
+              <path d="M16 10a4 4 0 0 1-8 0"/>
+            </svg>
+          ) : type === 'error' ? (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          ) : type === 'info' ? (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="16" x2="12" y2="12"/>
+              <line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          )}
+        </div>
+
+        <div className="action-toast-body">
+          {title && <h4 className="action-toast-title">{title}</h4>}
+          <p className="action-toast-message">{message}</p>
+          {actionLabel && actionPath && (
+            <div className="action-toast-actions">
+              <Link to={actionPath} onClick={dismissToast} className="action-toast-link">
+                <span>{actionLabel}</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                  <polyline points="12 5 19 12 12 19"/>
+                </svg>
+              </Link>
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={dismissToast}
+          className="action-toast-close"
+          title="Dismiss notification"
+          aria-label="Close notification"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+
+        <div className="action-toast-progress-bar" />
+      </div>
+    </div>
+  )
+}

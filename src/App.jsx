@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { go, money, useApp, useHash } from './store.jsx'
-import { Link, Wordmark, BranchPicker, BottomNavBar, MobileTopNav, FoodDetailModal } from './components/ui.jsx'
+import { Link, Wordmark, BranchPicker, BottomNavBar, MobileTopNav, FoodDetailModal, ActionToast } from './components/ui.jsx'
 import { Onboarding, Home, Menu, FoodPage, Cart, Checkout, OrderSuccess, Track, Account, Community, SignIn, SignUp } from './pages/Customer.jsx'
 import Admin from './pages/Admin.jsx'
 import BranchDashboard from './pages/BranchDashboard.jsx'
@@ -54,12 +54,12 @@ export default function App() {
   // If user accesses /kitchen directly
   if (seg[0] === 'kitchen') {
     if (!authReady) return <div className="wrap sec">Checking kitchen session…</div>
-    if (!staffUser) return <><StaffLoginPage />{toast && <div className="toast-pill">{toast}</div>}</>
+    if (!staffUser) return <><StaffLoginPage /><ActionToast /></>
     if (!['Owner', 'Manager', 'Kitchen'].includes(staffUser.role)) return <div className="wrap sec"><h1>Kitchen access restricted</h1><p>Your staff role cannot manage kitchen orders.</p></div>
     return (
       <>
         <KitchenDashboard branchId={staffUser.role === 'Owner' || staffUser.assignedBranch === 'all' ? (seg[1] || 'cug') : staffUser.assignedBranch} staffUser={staffUser} />
-        {toast && <div className="toast-pill">{toast}</div>}
+        <ActionToast />
       </>
     )
   }
@@ -67,12 +67,12 @@ export default function App() {
   // If user accesses /delivery directly
   if (seg[0] === 'delivery') {
     if (!authReady) return <div className="wrap sec">Checking rider session…</div>
-    if (!staffUser) return <><StaffLoginPage />{toast && <div className="toast-pill">{toast}</div>}</>
+    if (!staffUser) return <><StaffLoginPage /><ActionToast /></>
     if (!['Owner', 'Manager', 'Driver'].includes(staffUser.role)) return <div className="wrap sec"><h1>Delivery access restricted</h1><p>Your staff role cannot manage deliveries.</p></div>
     return (
       <>
         <DeliveryDashboard branchId={staffUser.role === 'Owner' || staffUser.assignedBranch === 'all' ? (seg[1] || 'all') : staffUser.assignedBranch} staffUser={staffUser} />
-        {toast && <div className="toast-pill">{toast}</div>}
+        <ActionToast />
       </>
     )
   }
@@ -80,12 +80,12 @@ export default function App() {
   // If user accesses /admin directly
   if (seg[0] === 'admin') {
     if (!authReady) return <div className="wrap sec">Checking staff session…</div>
-    if (!staffUser) return <><StaffLoginPage />{toast && <div className="toast-pill">{toast}</div>}</>
+    if (!staffUser) return <><StaffLoginPage /><ActionToast /></>
     if (!['Owner', 'Manager'].includes(staffUser.role)) return <div className="wrap sec"><h1>Admin access restricted</h1><p>Your staff role cannot open administration.</p></div>
     return (
       <>
         <Admin section={seg[1]} />
-        {toast && <div className="toast-pill">{toast}</div>}
+        <ActionToast />
       </>
     )
   }
@@ -93,7 +93,7 @@ export default function App() {
   // If user accesses /branch, /branch/sunyani, or /branch/cug directly
   if (seg[0] === 'branch') {
     if (!authReady) return <div className="wrap sec">Checking staff session…</div>
-    if (!staffUser) return <><StaffLoginPage />{toast && <div className="toast-pill">{toast}</div>}</>
+    if (!staffUser) return <><StaffLoginPage /><ActionToast /></>
     if (!['Owner', 'Manager', 'Cashier'].includes(staffUser.role)) return <div className="wrap sec"><h1>Branch access restricted</h1><p>Your staff role cannot access branch operations.</p></div>
     const branchTarget = seg[1] === 'sunyani' ? 'sunyani' : 'cug'
     if (staffUser.assignedBranch && staffUser.assignedBranch !== 'all' && staffUser.assignedBranch !== branchTarget) {
@@ -102,7 +102,7 @@ export default function App() {
     return (
       <>
         <BranchDashboard branchId={branchTarget} section={seg[2] || (staffUser.role === 'Cashier' ? 'pos' : 'overview')} />
-        {toast && <div className="toast-pill">{toast}</div>}
+        <ActionToast />
       </>
     )
   }
@@ -318,7 +318,7 @@ export default function App() {
         <BottomNavBar activePath={path} />
 
         {/* Toast Notification */}
-        {toast && <div className="toast-pill">{toast}</div>}
+        <ActionToast />
       </div>
     </div>
   )

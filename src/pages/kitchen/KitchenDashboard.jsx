@@ -218,7 +218,7 @@ export default function KitchenDashboard({ branchId: propBranch = 'cug', staffUs
       const [ordRes, availRes, menuRes] = await Promise.all([
         api('/kitchen/orders'),
         api(`/kitchen/availability?branch=${selectedBranch}`),
-        api('/menu').catch(() => ({ items: [] }))
+        api('/menu').catch(() => null)
       ])
 
       const filtered = (ordRes.orders || []).filter(o => o.branch === selectedBranch)
@@ -265,8 +265,10 @@ export default function KitchenDashboard({ branchId: propBranch = 'cug', staffUs
       })
       notify('Stock portions updated', 'success')
       await loadData()
+      return true
     } catch (err) {
       notify(err.message || 'Stock update failed', 'error')
+      return false
     }
   }
 
@@ -274,7 +276,7 @@ export default function KitchenDashboard({ branchId: propBranch = 'cug', staffUs
     try {
       const targetItems = filteredStockList.filter(item => item.status !== 'unavailable_today')
       if (targetItems.length === 0) return
-      await Promise.all(
+      const outcomes = await Promise.allSettled(
         targetItems.map(item =>
           api(`/kitchen/availability/${item.mealId}?branch=${selectedBranch}`, {
             method: 'PATCH',
@@ -282,10 +284,16 @@ export default function KitchenDashboard({ branchId: propBranch = 'cug', staffUs
           })
         )
       )
-      notify(`Added +${delta} portions to ${targetItems.length} dishes`, 'success')
-      await loadData()
+      const rejectedCount = outcomes.filter(o => o.status === 'rejected').length
+      if (rejectedCount > 0) {
+        notify(`Failed to update ${rejectedCount} item(s)`, 'error')
+      } else {
+        notify(`Added +${delta} portions to ${targetItems.length} dishes`, 'success')
+      }
     } catch (err) {
       notify(err.message || 'Batch update failed', 'error')
+    } finally {
+      await loadData()
     }
   }
 
@@ -295,8 +303,10 @@ export default function KitchenDashboard({ branchId: propBranch = 'cug', staffUs
       notify('Please enter a valid non-negative number of portions', 'error')
       return
     }
-    await handleStockUpdate(mealId, { setPrepared: val })
-    setExactPortionInputs(prev => ({ ...prev, [mealId]: '' }))
+    const success = await handleStockUpdate(mealId, { setPrepared: val })
+    if (success) {
+      setExactPortionInputs(prev => ({ ...prev, [mealId]: '' }))
+    }
   }
 
   const confirmedOrders = orders.filter(o => o.orderStatus === 'confirmed')
@@ -311,8 +321,8 @@ export default function KitchenDashboard({ branchId: propBranch = 'cug', staffUs
     return availability.map(item => {
       const menuData = menuMap.get(item.mealId)
       const remaining = Math.max(0, item.quantityPrepared - item.quantityReserved - item.quantitySold)
-      const isSoldOut = item.status === 'sold_out' || remaining <= 0
-      const isLowStock = !isSoldOut && remaining <= 5
+      const isSoldOut = item.status === 'sold_out' || (item.status === 'available' && remaining <= 0)
+      const isLowStock = item.status === 'available' && !isSoldOut && remaining <= 5
       return {
         ...item,
         category: menuData?.category || 'Main Dishes',
@@ -358,7 +368,7 @@ export default function KitchenDashboard({ branchId: propBranch = 'cug', staffUs
     const totalPrepared = enrichedStock.reduce((acc, i) => acc + (i.quantityPrepared || 0), 0)
     const totalReserved = enrichedStock.reduce((acc, i) => acc + (i.quantityReserved || 0), 0)
     const totalSold = enrichedStock.reduce((acc, i) => acc + (i.quantitySold || 0), 0)
-    const totalRemaining = enrichedStock.reduce((acc, i) => acc + (i.remaining || 0), 0)
+    const totalRemaining = enrichedStock.reduce((acc, i) => acc + (i.status === 'available' ? (i.remaining || 0) : 0), 0)
     const lowStockCount = enrichedStock.filter(i => i.isLowStock).length
     const soldOutCount = enrichedStock.filter(i => i.isSoldOut).length
     return { totalDishes, totalPrepared, totalReserved, totalSold, totalRemaining, lowStockCount, soldOutCount }

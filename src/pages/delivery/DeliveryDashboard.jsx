@@ -145,7 +145,7 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all', sta
   const [statusFilter, setStatusFilter] = useState('all') // 'all' | 'awaiting' | 'transit' | 'delivered' | 'failed'
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(false)
-  const [msg, setMsg] = useState('')
+  const [msg, setMsg] = useState(null)
   const [failModalRef, setFailModalRef] = useState(null)
   const [failReason, setFailReason] = useState('')
 
@@ -154,9 +154,9 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all', sta
     id: '', branchId: initialBranch === 'sunyani' ? 'sunyani' : 'cug', name: '', fee: 5, minOrderValue: 20, estimatedMinutes: '20-30 mins', active: true
   })
 
-  const notify = text => {
-    setMsg(text)
-    setTimeout(() => setMsg(''), 4000)
+  const notify = (text, type = 'success') => {
+    setMsg({ text, type })
+    setTimeout(() => setMsg(null), 4000)
   }
 
   const handleLogout = async () => {
@@ -165,7 +165,7 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all', sta
       if (say) say('Signed out from delivery portal')
       go('/staff-login')
     } catch (err) {
-      notify(err.message)
+      notify(err.message, 'error')
     }
   }
 
@@ -199,9 +199,9 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all', sta
 
   const handleAssign = async (ref) => {
     const driverId = driverChoice[ref]
-    if (!driverId) return notify('Select an active rider account first.')
+    if (!driverId) return notify('Select an active rider account first.', 'error')
     const driver = drivers.find(person => person.id === driverId)
-    if (!driver) return notify('That rider is not available for this branch.')
+    if (!driver) return notify('That rider is not available for this branch.', 'error')
     try {
       await api(`/delivery/orders/${ref}/assign`, {
         method: 'PATCH',
@@ -210,7 +210,7 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all', sta
       notify(`Assigned ${driver.name} to order ${ref}`)
       await loadData()
     } catch (err) {
-      notify(err.message)
+      notify(err.message, 'error')
     }
   }
 
@@ -220,7 +220,7 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all', sta
       notify(`Order ${ref} picked up by rider and out for delivery`)
       await loadData()
     } catch (err) {
-      notify(err.message)
+      notify(err.message, 'error')
     }
   }
 
@@ -230,7 +230,7 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all', sta
       notify(`Order ${ref} marked delivered!`)
       await loadData()
     } catch (err) {
-      notify(err.message)
+      notify(err.message, 'error')
     }
   }
 
@@ -246,7 +246,7 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all', sta
       setFailReason('')
       await loadData()
     } catch (err) {
-      notify(err.message)
+      notify(err.message, 'error')
     }
   }
 
@@ -261,7 +261,7 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all', sta
       setNewZone({ id: '', branchId: selectedBranch === 'sunyani' ? 'sunyani' : 'cug', name: '', fee: 5, minOrderValue: 20, estimatedMinutes: '20-30 mins', active: true })
       await loadData()
     } catch (err) {
-      notify(err.message)
+      notify(err.message, 'error')
     }
   }
 
@@ -518,7 +518,7 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all', sta
                   { id: 'awaiting', label: `Pending (${awaitingCount})` },
                   { id: 'transit', label: `In Transit (${transitCount})` },
                   { id: 'delivered', label: `Delivered (${deliveredCount})` },
-                  ...(failedCount > 0 ? [{ id: 'failed', label: `Issues (${failedCount})` }] : [])
+                  ...(failedCount > 0 || statusFilter === 'failed' ? [{ id: 'failed', label: `Issues (${failedCount})` }] : [])
                 ].map(tab => (
                   <button
                     key={tab.id}
@@ -540,9 +540,25 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all', sta
 
         {/* Global Alert Notification */}
         {msg && (
-          <div style={{ background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '12px 18px', borderRadius: '10px', marginBottom: '20px', fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <IconCheckCircle size={18} color="#059669" />
-            <span>{msg}</span>
+          <div style={{
+            background: msg.type === 'error' ? '#fef2f2' : '#ecfdf5',
+            color: msg.type === 'error' ? '#991b1b' : '#065f46',
+            border: `1px solid ${msg.type === 'error' ? '#fecaca' : '#a7f3d0'}`,
+            padding: '12px 18px',
+            borderRadius: '10px',
+            marginBottom: '20px',
+            fontWeight: 600,
+            fontSize: '14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            {msg.type === 'error' ? (
+              <IconAlertTriangle size={18} color="#dc2626" />
+            ) : (
+              <IconCheckCircle size={18} color="#059669" />
+            )}
+            <span>{msg.text}</span>
           </div>
         )}
 

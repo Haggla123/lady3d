@@ -10,7 +10,16 @@ export async function api(path, options = {}) {
       ...options.headers
     }
   })
-  const data = response.status === 204 ? null : await response.json().catch(() => ({}))
+  const text = response.status === 204 ? null : await response.text()
+  let data = null
+  if (text) {
+    try {
+      data = JSON.parse(text)
+    } catch {
+      const clean = text.replace(/<[^>]*>/g, '').trim()
+      data = { error: clean || `Request failed (${response.status})` }
+    }
+  }
   if (!response.ok) {
     throw new Error(data?.error || `Request failed (${response.status})`)
   }
