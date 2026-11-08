@@ -560,7 +560,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                     <h2 className="pbd-hero-title">{currentBranch.name}</h2>
                     <p className="pbd-hero-desc">{currentBranch.tagline}</p>
                     <p className="small" style={{ color: 'rgba(255,255,255,0.85)', margin: '4px 0 12px' }}>
-                      📍 {currentBranch.address} · WhatsApp Kitchen: <b>{currentBranch.whatsapp}</b>
+                      {currentBranch.address} · WhatsApp Kitchen: <b>{currentBranch.whatsapp}</b>
                     </p>
 
                     <div className="pbd-hero-buttons">
@@ -782,7 +782,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                               <span className="cust-ph">{o.phone}</span>
                             </div>
                             {o.address && (
-                              <div className="cust-addr">📍 Location: <b>{o.address}</b></div>
+                              <div className="cust-addr">Location: <b>{o.address}</b></div>
                             )}
                             <div className="cust-quick-links">
                               <a href={custMsgUrl} target="_blank" rel="noopener noreferrer" className="btn-wa-link">
@@ -950,14 +950,14 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                                     branchPrice: m.prices?.[lockedBranchId] ?? m.price
                                   })}
                                 >
-                                  ✏️ Edit
+                                  Edit
                                 </button>
                                 <button
                                   className="btn-del-sm"
                                   style={{ padding: '4px 8px', fontSize: '12px' }}
                                   onClick={() => handleDeleteDish(m)}
                                 >
-                                  🗑️ Delete
+                                  Delete
                                 </button></>}
                               </div>
                             </td>
@@ -1053,7 +1053,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                   <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}>
                     <div style={{ background: '#fff', borderRadius: '14px', width: '100%', maxWidth: '520px', padding: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
                       <h3 style={{ margin: '0 0 14px 0', fontSize: '18px', fontWeight: 800, color: '#1e293b' }}>
-                        ✏️ Edit Dish · {editingMeal.name}
+                        Edit Dish · {editingMeal.name}
                       </h3>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         <div>
@@ -1482,94 +1482,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
           </div>
         </main>
 
-        {/* Panel 3: Right Activity Panel (Feed Tailored strictly to this branch) */}
-        <aside className="pbd-activity-panel">
-          <div className="pbd-activity-header">
-            <h3 className="pbd-activity-title">{currentBranch.short} Feed</h3>
-            <span className="muted small">Live kitchen dispatch feed</span>
-          </div>
-
-          <div className="pbd-activity-section">
-            <div className="pbd-subhead-row">
-              <span className="pbd-subhead-title">
-                {lockedBranchId === 'sunyani' ? 'Market Circle pickups' : 'Campus deliveries'}
-              </span>
-              <button
-                onClick={() => setActiveSection('orders')}
-                className="pbd-view-all"
-                style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-              >
-                View all
-              </button>
-            </div>
-
-            {lockedBranchId === 'sunyani' ? (
-              <>
-                <div className="pbd-activity-card">
-                  <div className="pbd-date-box">
-                    <span className="pbd-date-num">1</span>
-                    <span className="pbd-date-mo">TODAY</span>
-                  </div>
-                  <div className="pbd-act-meta">
-                    <h4 className="pbd-act-title">Banku & Tilapia Pack</h4>
-                    <span className="pbd-act-time">Market Circle Counter Pickup</span>
-                  </div>
-                </div>
-
-                <div className="pbd-activity-card">
-                  <div className="pbd-date-box">
-                    <span className="pbd-date-num">2</span>
-                    <span className="pbd-date-mo">TODAY</span>
-                  </div>
-                  <div className="pbd-act-meta">
-                    <h4 className="pbd-act-title">Fufu & Goat Light Soup</h4>
-                    <span className="pbd-act-time">Takeaway Pack · Sunyani Town</span>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="pbd-activity-card">
-                  <div className="pbd-date-box">
-                    <span className="pbd-date-num">1</span>
-                    <span className="pbd-date-mo">TODAY</span>
-                  </div>
-                  <div className="pbd-act-meta">
-                    <h4 className="pbd-act-title">Waakye with Egg & Wele</h4>
-                    <span className="pbd-act-time">Hall 2 Annex Room 14 (CUG)</span>
-                  </div>
-                </div>
-
-                <div className="pbd-activity-card">
-                  <div className="pbd-date-box">
-                    <span className="pbd-date-num">2</span>
-                    <span className="pbd-date-mo">TODAY</span>
-                  </div>
-                  <div className="pbd-act-meta">
-                    <h4 className="pbd-act-title">Fried Rice & Chicken Pack</h4>
-                    <span className="pbd-act-time">Faculty Room 4 (Fiapre Campus)</span>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="pbd-activity-section">
-            <div className="pbd-subhead-row">
-              <span className="pbd-subhead-title">Latest Payments ({currentBranch.short})</span>
-            </div>
-            {completedOrders.filter(order => order.paid).slice(0, 5).map(order => (
-              <div className="pbd-shoutout-card" key={order.ref}>
-                <div className="pbd-shout-meta">
-                  <strong>{order.name}</strong>
-                  <p>Paid {money(order.total)} · {order.pay === 'momo' ? 'Mobile Money' : 'Cash'} · {order.ref}</p>
-                </div>
-              </div>
-            ))}
-            {!completedOrders.some(order => order.paid) && <p className="tbl-empty">No confirmed payments yet.</p>}
-          </div>
-        </aside>
-      </div>
+        </div>
     </div>
   )
 }

@@ -6,44 +6,79 @@ export default function DashboardsDirectory() {
 
   const portals = [
     {
-      title: '👑 Master Admin Dashboard',
+      title: 'Master Admin Dashboard',
       path: '/admin/overview',
       role: 'Owner (Central Admin) & Managers',
       desc: 'Central control for both branches. Manage daily menu, categories, branch prices, delivery zones, staff roles, capacity limits, and consolidated sales reports.',
       color: '#dc2626',
-      badge: 'Full Access'
+      badge: 'Full Access',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+        </svg>
+      )
     },
     {
-      title: '🏫 Catholic University Annex Console',
+      title: 'Catholic University Annex Console',
       path: '/branch/cug',
       role: 'CUG Branch Manager & Cashier',
       desc: 'Locked to CUG Fiapre Campus operations. Counter walk-in POS, campus kitchen queue, student deliveries, cash drawer, and CUG daily menu availability.',
       color: '#0284c7',
-      badge: 'Fiapre Campus'
+      badge: 'Fiapre Campus',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+      )
     },
     {
-      title: '🏙️ Sunyani Main Branch Console',
+      title: 'Sunyani Main Branch Console',
       path: '/branch/sunyani',
       role: 'Sunyani Main Manager & Cashier',
       desc: 'Locked to Sunyani Market Circle operations. Counter POS, town deliveries, cash & MoMo reconciliations, and local dishes pricing.',
       color: '#d97706',
-      badge: 'Market Circle'
+      badge: 'Market Circle',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2"/>
+          <line x1="8" y1="21" x2="16" y2="21"/>
+          <line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+      )
     },
     {
-      title: '🍳 Kitchen Order Display System',
+      title: 'Kitchen Order Display System',
       path: '/kitchen',
       role: 'Kitchen Chefs & Line Staff',
       desc: 'High-contrast real-time kitchen tablet display. Audio bell chimes on new orders, order advancement (Cooking → Ready), and live daily portions tracker (Prepared/Sold/Remaining).',
       color: '#10b981',
-      badge: 'Kitchen Tablet'
+      badge: 'Kitchen Tablet',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 8h1a4 4 0 0 1 0 8h-1"/>
+          <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/>
+          <line x1="6" y1="1" x2="6" y2="4"/>
+          <line x1="10" y1="1" x2="10" y2="4"/>
+          <line x1="14" y1="1" x2="14" y2="4"/>
+        </svg>
+      )
     },
     {
-      title: '🛵 Delivery & Dispatch Hub',
+      title: 'Delivery & Dispatch Hub',
       path: '/delivery',
       role: 'Dispatchers & Delivery Riders',
       desc: 'Assign authorized dispatch riders, track in-transit deliveries, view hostel/street addresses, record customer contact, confirm delivery, and configure delivery zones & fees.',
       color: '#6366f1',
-      badge: 'Riders & Dispatch'
+      badge: 'Riders & Dispatch',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="18.5" cy="17.5" r="3.5"/>
+          <circle cx="5.5" cy="17.5" r="3.5"/>
+          <circle cx="15" cy="5" r="1"/>
+          <path d="M12 17.5V14l-3-3 4-3 2 3h2"/>
+        </svg>
+      )
     }
   ]
 
@@ -107,9 +142,12 @@ export default function DashboardsDirectory() {
                 <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>{p.path}</span>
               </div>
 
-              <h2 style={{ fontSize: '20px', fontWeight: 800, margin: '0 0 8px 0', color: '#0f172a' }}>
-                {p.title}
-              </h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                <span style={{ color: p.color, display: 'inline-flex' }}>{p.icon}</span>
+                <h2 style={{ fontSize: '20px', fontWeight: 800, margin: 0, color: '#0f172a' }}>
+                  {p.title}
+                </h2>
+              </div>
               <div style={{ fontSize: '12px', fontWeight: 700, color: '#64748b', marginBottom: '12px' }}>
                 Target Role: <span style={{ color: '#334155' }}>{p.role}</span>
               </div>
@@ -133,7 +171,7 @@ export default function DashboardsDirectory() {
                 boxShadow: `0 4px 12px ${p.color}40`
               }}
             >
-              Open {p.title.split(' ')[1]} Portal →
+              Open {p.title} →
             </Link>
           </div>
         ))}

@@ -146,6 +146,6 @@ npm run server:dev
 npm run dev
 ```
 
-Open `http://localhost:5173/#/staff-login` and sign in using the owner email and password you put in `.env`. When running locally in development mode (`NODE_ENV=development`), optional demo staff accounts can be created with `SEED_DEMO_STAFF=true`. Demo accounts are never created or retained outside local development. Initial passwords for staff accounts must be set securely via `.env` or the Admin Staff Management console.
+Open `http://localhost:5173/#/staff-login` and sign in using the owner email and password you put in `.env`. Optional demo staff accounts can be created with `SEED_DEMO_STAFF=true` only when `NODE_ENV=development` is explicitly set; an unset `NODE_ENV` is treated as non-local, and demo accounts are purged. Initial passwords for staff accounts must be set securely via `.env` or the Admin Staff Management console.
 
 Paystack checkout stays hidden until `.env` has `PAYSTACK_SECRET_KEY` and real, reachable `API_PUBLIC_URL` and `FRONTEND_PUBLIC_URL` values. Use your Paystack test secret key during development. Set the Paystack webhook URL to `<API_PUBLIC_URL>/api/payments/paystack/webhook`; the browser return URL is registered by the server as `<API_PUBLIC_URL>/api/payments/paystack/return`.

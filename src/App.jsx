@@ -21,7 +21,8 @@ function StaffLoginPage() {
       if (session.role === 'Kitchen') go('/kitchen')
       else if (session.role === 'Driver') go('/delivery')
       else if (session.role === 'Cashier') go('/branch/' + (session.assignedBranch === 'sunyani' ? 'sunyani' : 'cug') + '/pos')
-      else go('/admin/overview')
+      else if (session.role === 'Owner' || session.role === 'Manager') go('/')
+      else go('/')
     }
     catch (error) { say(error.message) }
     finally { setBusy(false) }
@@ -162,7 +163,10 @@ export default function App() {
   else if (seg[0] === 'login') pageContent = <SignIn />
   else if (seg[0] === 'signup') pageContent = <SignUp />
   else if (seg[0] === 'community') pageContent = <Community />
-  else if (seg[0] === 'dashboards' || seg[0] === 'portals') pageContent = <DashboardsDirectory />
+  else if (seg[0] === 'dashboards' || seg[0] === 'portals') {
+    if (!staffUser) pageContent = <StaffLoginPage />
+    else pageContent = <DashboardsDirectory />
+  }
   else pageContent = <div className="wrap sec"><p className="empty-subtext">Page not found.</p></div>
 
   return (
@@ -180,12 +184,95 @@ export default function App() {
               <Link to="/community" className={seg[0] === 'community' ? 'active' : ''}>Community</Link>
               <Link to="/track" className={seg[0] === 'track' ? 'active' : ''}>Track Order</Link>
               <Link to="/account" className={seg[0] === 'account' ? 'active' : ''}>{user ? 'Account' : 'Log in'}</Link>
-              <Link to="/dashboards" className={['dashboards', 'admin', 'branch', 'kitchen', 'delivery'].includes(seg[0]) ? 'active staff-portal-btn' : 'staff-portal-btn'}>
-                💼 Staff Dashboards
-              </Link>
             </div>
 
             <div className="top-nav-right-actions">
+              {staffUser && ['Owner', 'Manager'].includes(staffUser.role) && (
+                <Link
+                  to="/admin/overview"
+                  className="top-admin-badge-btn"
+                  title="Open Admin Console"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: '#80141B',
+                    color: '#FFFFFF',
+                    padding: '7px 14px',
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    textDecoration: 'none',
+                    letterSpacing: '0.02em',
+                    boxShadow: '0 2px 6px rgba(128, 20, 27, 0.25)'
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+                  </svg>
+                  <span>Admin Console</span>
+                </Link>
+              )}
+              {staffUser && staffUser.role === 'Cashier' && (
+                <Link
+                  to={`/branch/${staffUser.assignedBranch || 'cug'}/pos`}
+                  className="top-admin-badge-btn"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: '#0284C7',
+                    color: '#FFFFFF',
+                    padding: '7px 14px',
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    textDecoration: 'none'
+                  }}
+                >
+                  <span>Branch POS</span>
+                </Link>
+              )}
+              {staffUser && staffUser.role === 'Kitchen' && (
+                <Link
+                  to="/kitchen"
+                  className="top-admin-badge-btn"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: '#15803D',
+                    color: '#FFFFFF',
+                    padding: '7px 14px',
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    textDecoration: 'none'
+                  }}
+                >
+                  <span>Kitchen Display</span>
+                </Link>
+              )}
+              {staffUser && staffUser.role === 'Driver' && (
+                <Link
+                  to="/delivery"
+                  className="top-admin-badge-btn"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: '#6366F1',
+                    color: '#FFFFFF',
+                    padding: '7px 14px',
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    textDecoration: 'none'
+                  }}
+                >
+                  <span>Delivery Portal</span>
+                </Link>
+              )}
               <Link to="/cart" className="top-basket-pill" aria-label="Cart">
                 <span className="basket-icon">
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49c.08-.14.12-.31.12-.48 0-.55-.45-1-1-1H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/></svg>

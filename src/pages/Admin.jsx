@@ -727,13 +727,13 @@ function MenuAdmin() {
                   avail: m.avail || { cug: true, sunyani: true }
                 })}
               >
-                ✏️ Edit
+                Edit
               </button>
               <button
                 className="btn-del-sm"
                 onClick={() => handleDelete(m)}
               >
-                🗑️ Delete
+                Delete
               </button>
             </div>
           ])}
@@ -746,7 +746,7 @@ function MenuAdmin() {
           <div style={{ background: '#fff', borderRadius: '14px', width: '100%', maxWidth: '560px', padding: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
               <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#1e293b' }}>
-                ✏️ Edit Dish · {editingMeal.name}
+                Edit Dish · {editingMeal.name}
               </h3>
               <button onClick={() => setEditingMeal(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}>×</button>
             </div>
@@ -1152,6 +1152,7 @@ function Staff() {
   const { say, api } = useApp()
   const [staff, setStaff] = useState([])
   const [newStaff, setNewStaff] = useState({ name: '', email: '', password: '', role: 'Cashier', branch: 'cug', phone: '' })
+  const [editingStaff, setEditingStaff] = useState(null)
   useEffect(() => { api('/admin/staff').then(({ staff: rows }) => setStaff(rows)).catch(error => say(error.message)) }, [])
 
   const handleAddStaff = async () => {
@@ -1177,6 +1178,18 @@ function Staff() {
     api(`/admin/staff/${member.id}`, { method: 'PATCH', body: JSON.stringify({ active: !member.active }) })
       .then(({ staff: updated }) => setStaff(rows => rows.map(row => row.id === member.id ? updated : row)))
       .catch(error => say(error.message))
+  }
+
+  const handleSaveStaff = async () => {
+    if (!editingStaff.name.trim() || !editingStaff.email.trim() || !editingStaff.phone.trim()) return say('Enter the staff name, email and phone number')
+    if (editingStaff.password && editingStaff.password.length < 10) return say('Use a temporary password with at least 10 characters')
+    const { password, ...details } = editingStaff
+    try {
+      const { staff: updated } = await api(`/admin/staff/${editingStaff.id}`, { method: 'PATCH', body: JSON.stringify({ ...details, ...(password ? { password } : {}) }) })
+      setStaff(rows => rows.map(row => row.id === updated.id ? updated : row))
+      setEditingStaff(null)
+      say(`Updated ${updated.name}'s account.`)
+    } catch (error) { say(error.message) }
   }
 
   return (
@@ -1219,6 +1232,8 @@ function Staff() {
           >
             <option value="Cashier">Cashier</option>
             <option value="Manager">Manager</option>
+            <option value="Kitchen">Kitchen</option>
+            <option value="Driver">Driver</option>
           </select>
         </label>
 
@@ -1251,6 +1266,19 @@ function Staff() {
         </div>
       </div>
 
+      {editingStaff && <div className="pbd-white-card mt-2" style={{ border: '1px solid #cbd5e1' }}>
+        <h4>Edit staff account: {editingStaff.name}</h4>
+        <div className="pbd-add-meal-grid mt-2">
+          <label><span className="field-label-small">Staff Name</span><input className="pbd-input" value={editingStaff.name} onChange={e => setEditingStaff({ ...editingStaff, name: e.target.value })} /></label>
+          <label><span className="field-label-small">Sign-in Email</span><input type="email" className="pbd-input" value={editingStaff.email} onChange={e => setEditingStaff({ ...editingStaff, email: e.target.value })} /></label>
+          <label><span className="field-label-small">Phone Number</span><input className="pbd-input" value={editingStaff.phone} onChange={e => setEditingStaff({ ...editingStaff, phone: e.target.value })} /></label>
+          <label><span className="field-label-small">Role</span><select className="pbd-select" value={editingStaff.role} onChange={e => setEditingStaff({ ...editingStaff, role: e.target.value })}><option value="Manager">Manager</option><option value="Kitchen">Kitchen</option><option value="Driver">Driver</option><option value="Cashier">Cashier</option></select></label>
+          <label><span className="field-label-small">Assigned Branch</span><select className="pbd-select" value={editingStaff.branch} onChange={e => setEditingStaff({ ...editingStaff, branch: e.target.value })}><option value="cug">Catholic University (Annex)</option><option value="sunyani">Sunyani Main Branch</option><option value="all">All Branches</option></select></label>
+          <label><span className="field-label-small">Reset Password (optional)</span><input type="password" minLength={10} autoComplete="new-password" className="pbd-input" placeholder="Leave blank to keep current" value={editingStaff.password} onChange={e => setEditingStaff({ ...editingStaff, password: e.target.value })} /></label>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}><button className="btn-pbd-action" onClick={handleSaveStaff}>Save account</button><button className="btn-pbd-action" onClick={() => setEditingStaff(null)}>Cancel</button></div>
+      </div>}
+
       <Table
         head={['Staff Member', 'Sign-in Email', 'Role', 'Assigned Branch', 'Contact Phone', 'Active Status', 'Actions']}
         rows={staff.map(s => [
@@ -1267,13 +1295,7 @@ function Staff() {
             />
             <span className="pbd-slider" />
           </label>,
-          <button
-            key="d"
-            className="btn-del-sm"
-            onClick={() => handleDeleteStaff(s.id, s.name)}
-          >
-            Disable
-          </button>
+          <div key="actions" style={{ display: 'flex', gap: 6 }}><button className="btn-del-sm" onClick={() => setEditingStaff({ ...s, password: '' })}>Edit</button><button className="btn-del-sm" onClick={() => handleDeleteStaff(s.id, s.name)}>Disable</button></div>
         ])}
       />
     </div>
@@ -1285,9 +1307,11 @@ function Loyalty() {
   const { loyaltyRules, setLoyaltyRules, say } = useApp()
   const [rules, setRules] = useState(loyaltyRules)
 
-  const handleSave = () => {
-    setLoyaltyRules(rules)
-    say('Loyalty & reward rules saved!')
+  const handleSave = async () => {
+    try {
+      await setLoyaltyRules(rules)
+      say('Loyalty & reward rules saved!')
+    } catch (error) { say(error.message) }
   }
 
   return (
@@ -1304,6 +1328,7 @@ function Loyalty() {
           <span>Spend per 1 Loyalty Point (GH₵)</span>
           <input
             type="number"
+            min="1"
             value={rules.spendPerPoint}
             onChange={e => setRules({ ...rules, spendPerPoint: +e.target.value })}
             className="pbd-input"
@@ -1314,6 +1339,7 @@ function Loyalty() {
           <span>Points Required for Free Plate</span>
           <input
             type="number"
+            min="1"
             value={rules.rewardThreshold}
             onChange={e => setRules({ ...rules, rewardThreshold: +e.target.value })}
             className="pbd-input"
@@ -1340,8 +1366,29 @@ function Loyalty() {
 
 // 9. Promotions & Vouchers
 function Promos() {
-  const { promos, setPromos, say } = useApp()
-  const [t, setT] = useState('')
+  const { promos, setPromos, say, api } = useApp()
+  const emptyPromo = { code: '', label: '', bannerText: '', discount: 0.1, enabled: true }
+  const [form, setForm] = useState(emptyPromo)
+  const [editingId, setEditingId] = useState(null)
+  const [savingPromoId, setSavingPromoId] = useState(null)
+  useEffect(() => { api('/admin/promos').then(({ promos: rows }) => setPromos(rows)).catch(error => say(error.message)) }, [])
+
+  const savePromo = async () => {
+    try {
+      const payload = { ...form, discount: Number(form.discount) }
+      if (editingId) {
+        const { promo } = await api(`/admin/promos/${editingId}`, { method: 'PATCH', body: JSON.stringify(payload) })
+        setPromos(rows => rows.map(row => row.id === editingId ? promo : row))
+        say('Promotion updated')
+      } else {
+        const { promo } = await api('/admin/promos', { method: 'POST', body: JSON.stringify(payload) })
+        setPromos(rows => [promo, ...rows])
+        say('Promotion created')
+      }
+      setForm(emptyPromo)
+      setEditingId(null)
+    } catch (error) { say(error.message) }
+  }
 
   return (
     <div className="pbd-white-card">
@@ -1350,49 +1397,32 @@ function Promos() {
         <span className="muted small">Manage homepage announcements & student discount banners</span>
       </div>
 
-      <div className="row gap mt-2">
-        <input
-          placeholder="Promo Banner (e.g. CUG Exam Week: 10% off with code STUDENT10)"
-          value={t}
-          onChange={e => setT(e.target.value)}
-          className="pbd-input flex-grow"
-        />
-        <button
-          className="btn-pbd-action"
-          onClick={() => {
-            if (t.trim()) {
-              setPromos([...promos, { id: Date.now(), name: t.trim(), on: true }])
-              setT('')
-              say('Promotion banner added!')
-            }
-          }}
-        >
-          + Add Banner
-        </button>
+      <div id="promo-editor" className="pbd-add-meal-grid mt-2">
+        <label><span className="field-label-small">Voucher Code</span><input className="pbd-input" placeholder="e.g. STUDENT10" value={form.code} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} /></label>
+        <label><span className="field-label-small">Promotion Name</span><input className="pbd-input" placeholder="Student discount" value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} /></label>
+        <label><span className="field-label-small">Discount (%)</span><input className="pbd-input" type="number" min="0" max="80" value={Math.round(form.discount * 100)} onChange={e => setForm({ ...form, discount: Number(e.target.value) / 100 })} /></label>
+        <label><span className="field-label-small">Customer Banner Message</span><input className="pbd-input" maxLength="240" placeholder="Use this code on your next order" value={form.bannerText} onChange={e => setForm({ ...form, bannerText: e.target.value })} /></label>
+        <div className="row gap"><button className="btn-pbd-action" onClick={savePromo}>{editingId ? 'Save Changes' : '+ Add Promotion'}</button>{editingId && <button className="btn-del-sm" onClick={() => { setEditingId(null); setForm(emptyPromo) }}>Cancel</button>}</div>
       </div>
+
+      <p className="muted small">Changes save to the database. Disabled promotions disappear from the customer banner and checkout.</p>
 
       <div className="pbd-promos-list mt-3">
         {promos.map(p => (
           <div key={p.id} className="pbd-promo-item">
-            <strong>{p.name}</strong>
+            <div><strong>{p.label} ({p.code})</strong><p className="muted small">{Math.round((p.discount || 0) * 100)}% off · {p.bannerText || 'No banner message'}</p></div>
             <div className="row gap align-center">
-              <label className="pbd-switch">
-                <input
-                  type="checkbox"
-                  checked={p.on}
-                  onChange={() => setPromos(promos.map(x => x.id === p.id ? { ...x, on: !x.on } : x))}
-                />
-                <span className="pbd-slider" />
-              </label>
-              <button
-                className="btn-del-sm"
-                onClick={() => {
-                  setPromos(promos.filter(x => x.id !== p.id))
-                  say('Promotion deleted')
-                }}
-              >
-                Delete
-              </button>
+              <button className="btn-del-sm" disabled={savingPromoId === p.id} onClick={async () => {
+                setSavingPromoId(p.id)
+                try {
+                  const { promo } = await api(`/admin/promos/${p.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: p.enabled === false }) })
+                  setPromos(rows => rows.map(x => x.id === p.id ? promo : x))
+                  say(promo.enabled ? `${promo.code} is active` : `${promo.code} is paused`)
+                } catch (error) { say(error.message) }
+                finally { setSavingPromoId(null) }
+              }}>{savingPromoId === p.id ? 'Saving…' : p.enabled === false ? 'Enable' : 'Pause'}</button>
+              <button className="btn-del-sm" onClick={() => { setEditingId(p.id); setForm({ code: p.code, label: p.label, bannerText: p.bannerText || '', discount: p.discount, enabled: p.enabled !== false }); document.getElementById('promo-editor')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}>Edit</button>
+              <button className="btn-del-sm" onClick={async () => { if (!confirm(`Delete promotion ${p.code}?`)) return; try { await api(`/admin/promos/${p.id}`, { method: 'DELETE' }); setPromos(rows => rows.filter(x => x.id !== p.id)); say('Promotion deleted') } catch (error) { say(error.message) } }}>Delete</button>
             </div>
           </div>
         ))}
@@ -1690,7 +1720,7 @@ function BranchConsoleDirectory() {
             <div className="console-badges-row">
               <span className="badge-chip">Local & Continental Dishes</span>
               <span className="badge-chip">Counter POS</span>
-              <span className="badge-chip">🔒 Sunyani Only (Locked)</span>
+              <span className="badge-chip">Sunyani Only (Locked)</span>
             </div>
           </div>
           <a href="#/branch/sunyani" className="btn-open-console">
@@ -1714,7 +1744,7 @@ function BranchConsoleDirectory() {
             <div className="console-badges-row">
               <span className="badge-chip">Student & Faculty Packs</span>
               <span className="badge-chip">Campus Delivery</span>
-              <span className="badge-chip">🔒 CUG Only (Locked)</span>
+              <span className="badge-chip">CUG Only (Locked)</span>
             </div>
           </div>
           <a href="#/branch/cug" className="btn-open-console">
@@ -1744,109 +1774,6 @@ const VIEWS = {
   reviews: Reviews,
   staff: Staff,
   settings: Settings
-}
-
-// Right Activity Panel Component
-function RightActivityPanel() {
-  const { orders } = useApp()
-
-  return (
-    <aside className="pbd-activity-panel">
-      <div className="pbd-activity-header">
-        <h3 className="pbd-activity-title">Live Kitchen Feed</h3>
-      </div>
-
-      {/* Upcoming Deliveries & Pickups */}
-      <div className="pbd-activity-section">
-        <div className="pbd-subhead-row">
-          <span className="pbd-subhead-title">Upcoming pickups</span>
-          <Link to="/admin/orders" className="pbd-view-all">View all</Link>
-        </div>
-
-        <div className="pbd-activity-card">
-          <div className="pbd-date-box">
-            <span className="pbd-date-num">13</span>
-            <span className="pbd-date-mo">MAY</span>
-          </div>
-          <div className="pbd-act-meta">
-            <h4 className="pbd-act-title">Waakye Special</h4>
-            <span className="pbd-act-time">1:00 PM – 1:30 PM • Mary Rose</span>
-          </div>
-        </div>
-
-        <div className="pbd-activity-card">
-          <div className="pbd-date-box">
-            <span className="pbd-date-num">5</span>
-            <span className="pbd-date-mo">APR</span>
-          </div>
-          <div className="pbd-act-meta">
-            <h4 className="pbd-act-title">Jollof & Chicken Pack</h4>
-            <span className="pbd-act-time">4:00 PM – 4:30 PM • Jerome Brown</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Upcoming Campus Orders */}
-      <div className="pbd-activity-section">
-        <div className="pbd-subhead-row">
-          <span className="pbd-subhead-title">Campus deliveries</span>
-          <Link to="/admin/orders" className="pbd-view-all">View all</Link>
-        </div>
-
-        <div className="pbd-activity-card">
-          <div className="pbd-date-box">
-            <span className="pbd-date-num">10</span>
-            <span className="pbd-date-mo">MAY</span>
-          </div>
-          <div className="pbd-act-meta">
-            <h4 className="pbd-act-title">Hall 2 Annex (CUG)</h4>
-            <span className="pbd-act-time">3:00 PM – 3:30 PM</span>
-          </div>
-        </div>
-
-        <div className="pbd-activity-card">
-          <div className="pbd-date-box">
-            <span className="pbd-date-num">12</span>
-            <span className="pbd-date-mo">MAY</span>
-          </div>
-          <div className="pbd-act-meta">
-            <h4 className="pbd-act-title">Faculty Room 4</h4>
-            <span className="pbd-act-time">12:00 PM – 12:30 PM</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Latest Shoutouts / MoMo */}
-      <div className="pbd-activity-section">
-        <div className="pbd-subhead-row">
-          <span className="pbd-subhead-title">Latest shoutouts</span>
-          <Link to="/admin/reviews" className="pbd-view-all">View all</Link>
-        </div>
-
-        <div className="pbd-shoutout-card">
-          <div className="pbd-avatar-wrap">
-            <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&q=80" alt="Adam" className="pbd-avatar-img" />
-            <span className="pbd-green-dot" />
-          </div>
-          <div className="pbd-shout-meta">
-            <strong>Adam Willson</strong>
-            <p>Sent MoMo GH₵ 60 for Waakye</p>
-          </div>
-        </div>
-
-        <div className="pbd-shoutout-card">
-          <div className="pbd-avatar-wrap">
-            <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=80&q=80" alt="Johnny" className="pbd-avatar-img" />
-            <span className="pbd-green-dot" />
-          </div>
-          <div className="pbd-shout-meta">
-            <strong>Johnny Fox</strong>
-            <p>Rated 5★ for Fried Fish</p>
-          </div>
-        </div>
-      </div>
-    </aside>
-  )
 }
 
 // Main Admin Component with Red & White Theme + Logout functionality
@@ -1974,9 +1901,6 @@ export default function Admin({ section = 'overview' }) {
             )}
           </div>
         </main>
-
-        {/* Panel 3: Right Warm Almond Activity Sidebar */}
-        <RightActivityPanel />
       </div>
     </div>
   )

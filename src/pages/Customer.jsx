@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, go, money, useApp } from '../store.jsx'
 import { Link, Food, DishCard, BranchPicker, Stars, CategoryIcon } from '../components/ui.jsx'
-import { STATUSES, BRANCHES, CATEGORIES_WITH_ICONS, PROMO_CODES, EXTRAS, buildOrderWhatsAppUrl } from '../data.js'
+import { STATUSES, BRANCHES, CATEGORIES_WITH_ICONS, EXTRAS, buildOrderWhatsAppUrl } from '../data.js'
 
 // 1. Onboarding / Get Started Sequence (SnapEats Screen 1)
 export function Onboarding({ onStart, onSignIn, onSignUp }) {
@@ -86,7 +86,7 @@ export function Onboarding({ onStart, onSignIn, onSignUp }) {
 
 // 2. Modern Home Page (SnapEats Screen 2 + Arby's + Bon Appétit)
 export function Home() {
-  const { menu, branch, setBranch, orderType, setOrderType, applyPromo, setActiveFood, add, promos, user } = useApp()
+  const { menu, branch, setBranch, orderType, setOrderType, applyPromo, setActiveFood, add, promos, user, loyaltyRules } = useApp()
   const [activeCat, setActiveCat] = useState('All')
   const [searchVal, setSearchVal] = useState('')
 
@@ -146,18 +146,21 @@ export function Home() {
       </section>
 
       {/* Hero Promo Banner */}
-      <section className="promo-banner-card">
+      {(() => {
+        const promo = promos.find(item => item.enabled !== false && item.on !== false && (item.bannerText || item.label))
+        if (!promo) return null
+        return <section className="promo-banner-card">
         <div className="promo-banner-content">
           <span className="promo-badge-tag">SPECIAL VOUCHER</span>
           <h2 className="promo-banner-title">
-            Up to <span>20% OFF</span><br />Campus Orders!
+            {promo.label || promo.bannerText} <span>{Math.round((promo.discount || 0) * 100)}% OFF</span>
           </h2>
-          <p className="promo-banner-sub">Use voucher <b>WELCOME20</b> on all fresh Ghanaian meals</p>
+          <p className="promo-banner-sub">{promo.bannerText || `Use voucher ${promo.code}`} {promo.code && <>Code: <b>{promo.code}</b></>}</p>
           <div className="promo-banner-actions">
             <button
               className="btn-claim-voucher"
               onClick={() => {
-                applyPromo('WELCOME20')
+                if (promo.code) applyPromo(promo.code)
                 go('/menu')
               }}
             >
@@ -173,6 +176,7 @@ export function Home() {
           />
         </div>
       </section>
+      })()}
 
       {/* Search Input Bar */}
       <section className="search-bar-section">
@@ -301,7 +305,7 @@ export function Home() {
         <div className="rewards-text-col">
           <h3 className="rewards-banner-title">LADY 3D REWARDS</h3>
           <p className="rewards-banner-desc">
-            Earn points with every order and unlock free plates, birthday drinks and VIP student discounts.
+            Earn 1 point per GH₵{loyaltyRules.spendPerPoint} spent. Reach {loyaltyRules.rewardThreshold} points for a free plate.
           </p>
         </div>
         <Link to="/account" className="btn-rewards-join">
@@ -564,7 +568,7 @@ export function FoodPage({ id }) {
 
 // 5. Modern Cart / Order Page (SnapEats Screen 3)
 export function Cart() {
-  const { lines, setQty, subtotal, discount, deliveryFee, total, price, ok, count, promoCode, promoError, applyPromo, removePromo, orderType, setOrderType } = useApp()
+  const { lines, setQty, subtotal, discount, deliveryFee, total, price, ok, count, promoCode, promoError, applyPromo, removePromo, orderType, setOrderType, promos } = useApp()
   const [promoInput, setPromoInput] = useState('')
 
   if (!count) {
@@ -607,14 +611,14 @@ export function Cart() {
           className={`cart-mode-btn ${orderType === 'delivery' ? 'active' : ''}`}
           onClick={() => setOrderType('delivery')}
         >
-          🛵 Campus Delivery
+          Campus Delivery
         </button>
         <button
           type="button"
           className={`cart-mode-btn ${orderType === 'pickup' ? 'active' : ''}`}
           onClick={() => setOrderType('pickup')}
         >
-          🥡 Counter Pickup
+          Counter Pickup
         </button>
       </div>
 
@@ -622,14 +626,14 @@ export function Cart() {
       <div className="cart-mode-info-banner">
         {orderType === 'delivery' ? (
           <span>
-            🚀 Express campus delivery (15–25 mins). {subtotal >= 80 ? (
-              <b className="free-tag">🎉 FREE delivery unlocked!</b>
+            Express campus delivery (15–25 mins). {subtotal >= 80 ? (
+              <b className="free-tag">FREE delivery unlocked!</b>
             ) : (
               <span>Add <b>{money(Math.max(0, 80 - subtotal))}</b> more for FREE delivery.</span>
             )}
           </span>
         ) : (
-          <span>🏪 Ready for instant pickup at kitchen counter in 10–15 mins.</span>
+          <span>Ready for instant pickup at kitchen counter in 10–15 mins.</span>
         )}
       </div>
 
@@ -674,7 +678,7 @@ export function Cart() {
 
                   {!isLineAvail && (
                     <div className="cart-item-warn-banner">
-                      ⚠️ Unavailable at selected branch
+                      Unavailable at selected branch
                     </div>
                   )}
                 </div>
@@ -709,7 +713,7 @@ export function Cart() {
       {/* Promo Code Input Box */}
       <div className="promo-voucher-box">
         <div className="promo-box-header">
-          <span className="promo-ticket-icon">🎟️</span>
+          <span className="promo-ticket-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg></span>
           <div>
             <h4 className="promo-box-title">Have a Promocode or Voucher?</h4>
             <p className="promo-box-sub">Apply student & first-order discounts</p>
@@ -739,13 +743,13 @@ export function Cart() {
 
         <div className="promo-suggestions-row">
           <span className="suggest-hint">Quick apply:</span>
-          {Object.keys(PROMO_CODES).map(code => (
+          {promos.filter(promo => promo.enabled !== false).map(promo => (
             <button
-              key={code}
-              className={`promo-chip-quick ${promoCode === code ? 'active' : ''}`}
-              onClick={() => applyPromo(code)}
+              key={promo.code}
+              className={`promo-chip-quick ${promoCode === promo.code ? 'active' : ''}`}
+              onClick={() => applyPromo(promo.code)}
             >
-              {code} {PROMO_CODES[code]?.discount ? `(-${PROMO_CODES[code].discount * 100}%)` : ''}
+              {promo.code} {promo.discount ? `(-${promo.discount * 100}%)` : ''}
             </button>
           ))}
         </div>
@@ -865,14 +869,14 @@ export function Checkout() {
                   className={`cart-mode-btn ${orderType === 'delivery' ? 'active' : ''}`}
                   onClick={() => setOrderType('delivery')}
                 >
-                  🛵 Campus / Town Delivery
+                  Campus / Town Delivery
                 </button>
                 <button
                   type="button"
                   className={`cart-mode-btn ${orderType === 'collection' ? 'active' : ''}`}
                   onClick={() => setOrderType('collection')}
                 >
-                  🥡 Counter Collection
+                  Counter Collection
                 </button>
               </div>
 
@@ -978,7 +982,7 @@ export function Checkout() {
                   />
                   <div className="payment-opt-info">
                     <div className="payment-title-row">
-                      <b>📱 Pay securely with Paystack</b>
+                      <b>Pay securely with Paystack</b>
                       <span className="pay-badge-popular">Instant</span>
                     </div>
                     <small>Pay by Mobile Money, card, or another Paystack-supported method</small>
@@ -994,7 +998,7 @@ export function Checkout() {
                   />
                   <div className="payment-opt-info">
                     <div className="payment-title-row">
-                      <b>💵 Pay on Delivery / Counter</b>
+                      <b>Pay on Delivery / Counter</b>
                     </div>
                     <small>Pay with cash or MoMo directly when food is received</small>
                   </div>
@@ -1047,26 +1051,26 @@ export function Checkout() {
             {/* Delivery & Contact Note */}
             <div className="review-delivery-note">
               <div className="review-note-row">
-                <b>📍 Branch:</b> <span>{BRANCHES.find(b => b.id === branch)?.name}</span>
+                <b>Branch:</b> <span>{BRANCHES.find(b => b.id === branch)?.name}</span>
               </div>
               <div className="review-note-row">
-                <b>👤 Contact:</b> <span>{f.name} ({f.phone})</span>
+                <b>Contact:</b> <span>{f.name} ({f.phone})</span>
               </div>
               <div className="review-note-row">
-                <b>🛵 Mode:</b> <span>{orderType === 'delivery' ? 'Campus Delivery' : 'Counter Pickup'}</span>
+                <b>Mode:</b> <span>{orderType === 'delivery' ? 'Campus Delivery' : 'Counter Pickup'}</span>
               </div>
               {orderType === 'delivery' && (
                 <div className="review-note-row">
-                  <b>🏠 Address:</b> <span>{f.address}</span>
+                  <b>Address:</b> <span>{f.address}</span>
                 </div>
               )}
               {f.note && (
                 <div className="review-note-row">
-                  <b>📝 Note:</b> <span>{f.note}</span>
+                  <b>Note:</b> <span>{f.note}</span>
                 </div>
               )}
               <div className="review-note-row">
-                <b>💳 Payment:</b> <span>{f.pay === 'momo' ? 'Mobile Money (Prompt on Phone)' : 'Pay on Delivery / Counter'}</span>
+                <b>Payment:</b> <span>{f.pay === 'momo' ? 'Mobile Money (Prompt on Phone)' : 'Pay on Delivery / Counter'}</span>
               </div>
             </div>
 
@@ -1333,7 +1337,7 @@ export function Track({ refId }) {
               <span className="order-ref-label">Order Reference</span>
               <h2 className="order-ref-code">{order.ref}</h2>
               <span className="order-time-stamp">
-                Fulfilment: <b>{order.orderType === 'delivery' ? '🛵 Delivery' : '🥡 Collection'}</b> ({order.branch?.toUpperCase()})
+                Fulfilment: <b>{order.orderType === 'delivery' ? 'Delivery' : 'Collection'}</b> ({order.branch?.toUpperCase()})
               </span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
@@ -1372,7 +1376,7 @@ export function Track({ refId }) {
           {order.orderType === 'delivery' && order.deliveryAssignment?.driverName && (
             <div style={{ background: '#e0f2fe', border: '1px solid #bae6fd', borderRadius: '8px', padding: '12px', margin: '12px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
-                <b style={{ color: '#0369a1', fontSize: '14px' }}>🛵 Assigned Dispatch Rider: {order.deliveryAssignment.driverName}</b>
+                <b style={{ color: '#0369a1', fontSize: '14px' }}>Assigned Dispatch Rider: {order.deliveryAssignment.driverName}</b>
                 <div style={{ fontSize: '12px', color: '#0c4a6e', marginTop: '2px' }}>
                   Your food has been assigned to an authorized delivery rider.
                 </div>
@@ -1474,7 +1478,14 @@ export function SignIn() {
   const handleSignIn = (e) => {
     e.preventDefault()
     api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
-      .then(({ user: account }) => { loginUser(account); go('/account') })
+      .then(({ user: account }) => {
+        loginUser(account)
+        if (account.role === 'Kitchen') go('/kitchen')
+        else if (account.role === 'Driver') go('/delivery')
+        else if (account.role === 'Cashier') go('/branch/' + (account.assignedBranch === 'sunyani' ? 'sunyani' : 'cug') + '/pos')
+        else if (account.role === 'Owner' || account.role === 'Manager') go('/')
+        else go('/account')
+      })
       .catch(error => say(error.message))
   }
 
@@ -1707,7 +1718,7 @@ export function SignUp() {
 
 // 10. Modern Account / Profile Screen (Bon Appétit Screen 5)
 export function Account() {
-  const { user, logoutUser, orders, favs, menu, points, say, canInstall, installPwa, updateProfile } = useApp()
+  const { user, logoutUser, orders, favs, menu, points, say, canInstall, installPwa, updateProfile, loyaltyRules } = useApp()
   const [tab, setTab] = useState('orders')
   const [profile, setProfile] = useState({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '', branch: user?.branch || 'cug' })
   useEffect(() => setProfile({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '', branch: user?.branch || 'cug' }), [user])
@@ -1779,12 +1790,12 @@ export function Account() {
         <div className="rewards-progress-bar">
           <div
             className="rewards-progress-fill"
-            style={{ width: `${Math.min(100, (points / 50) * 100)}%` }}
+            style={{ width: `${Math.min(100, (points / loyaltyRules.rewardThreshold) * 100)}%` }}
           />
         </div>
 
         <p className="rewards-note">
-          {Math.max(0, 50 - points)} more points needed to claim your next <b>FREE Plate</b>! (Earn 1 pt per GH₵10 spent).
+          {Math.max(0, loyaltyRules.rewardThreshold - points)} more points needed to claim your next <b>FREE Plate</b>! (Earn 1 pt per GH₵{loyaltyRules.spendPerPoint} spent).
         </p>
       </div>
 

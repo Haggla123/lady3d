@@ -143,7 +143,7 @@ if (process.env.SEED_OWNER_EMAIL && process.env.SEED_OWNER_PASSWORD) {
     'driver.sunyani@lady3d.local'
   ]
 
-  const isLocalDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV
+  const isLocalDev = process.env.NODE_ENV === 'development'
   if (isLocalDev && process.env.SEED_DEMO_STAFF === 'true') {
     const demoStaff = [
       { email: 'manager.cug@lady3d.local', name: 'CUG Branch Manager', role: 'Manager', branch: 'cug', phone: '0531299243' },

@@ -45,10 +45,10 @@ export function AppProvider({ children }) {
   const [voted, setVoted] = useState(null)
   const [toast, setToast] = useState('')
   const [promos, setPromos] = useState([
-    { id: 1, name: 'Student ID: 10% off before 11am (Code: STUDENT10)', on: true },
-    { id: 2, name: 'Welcome 20% Voucher on all orders (Code: WELCOME20)', on: true }
+    ...Object.values(PROMO_CODES).map(promo => ({ ...promo, label: promo.label, bannerText: promo.label, enabled: true, on: true }))
   ])
-  const [promoCode, setPromoCode] = useState('WELCOME20')
+  const [loyaltyRules, setLoyaltyRulesState] = useState({ spendPerPoint: 10, rewardThreshold: 50, promoDiscount: 20 })
+  const [promoCode, setPromoCode] = useState('')
   const [promoError, setPromoError] = useState('')
   const [role, setRole] = useState(null)
   const [activeFood, setActiveFood] = useState(null)
@@ -79,7 +79,8 @@ export function AppProvider({ children }) {
         if (alive) {
           if (bootstrap.menu?.length) setMenu(bootstrap.menu)
           if (bootstrap.reviews) setReviews(bootstrap.reviews)
-          if (bootstrap.promos?.length) setPromos(bootstrap.promos)
+          if (Array.isArray(bootstrap.promos)) setPromos(bootstrap.promos)
+          if (bootstrap.loyaltyRules) setLoyaltyRulesState(bootstrap.loyaltyRules)
           if (bootstrap.deliveryZones?.length) setDeliveryZones(bootstrap.deliveryZones)
           if (bootstrap.dailyStock?.length) setDailyStock(bootstrap.dailyStock)
           if (bootstrap.branches?.length) {
@@ -99,6 +100,7 @@ export function AppProvider({ children }) {
           if (alive) setOrders(mine || [])
         } else {
           setStaffUser(session)
+          setUser(session)
           setRole(session.role)
           const [{ orders: currentOrders }, { state }] = await Promise.all([
             api('/admin/orders'),
@@ -112,7 +114,7 @@ export function AppProvider({ children }) {
           }
           if (state.menu) setMenu(state.menu)
           if (state.cats) setCats(state.cats)
-          if (state.promos) setPromos(state.promos)
+          if (state.loyaltyRules) setLoyaltyRulesState(state.loyaltyRules)
         }
       } catch {
         /* Anonymous visitor */
@@ -139,12 +141,20 @@ export function AppProvider({ children }) {
 
   const loginUser = userData => {
     setUser(userData)
+    if (userData.role && userData.role !== 'customer') {
+      setStaffUser(userData)
+      setRole(userData.role)
+    }
     api('/my/orders').then(({ orders: mine }) => setOrders(mine || [])).catch(() => {})
     say(`Welcome back, ${userData.name}!`)
   }
 
   const logoutUser = () => {
     setUser(null)
+    setPromoCode('')
+    setPromoError('')
+    setStaffUser(null)
+    setRole('customer')
     setOrders([])
     api('/auth/logout', { method: 'POST' }).catch(() => {})
     say('You have been logged out.')
@@ -222,7 +232,7 @@ export function AppProvider({ children }) {
   const subtotal = lines.reduce((s, l) => s + l.lineTotal, 0)
   
   // Calculate promo discount
-  const activePromo = promoCode && PROMO_CODES[promoCode.toUpperCase()]
+  const activePromo = promoCode && promos.find(promo => promo.code?.toUpperCase() === promoCode.toUpperCase() && promo.enabled !== false)
   const discountRate = activePromo ? activePromo.discount : 0
   const discount = Math.round(subtotal * discountRate * 100) / 100
 
@@ -239,13 +249,32 @@ export function AppProvider({ children }) {
       setPromoError('')
       return
     }
-    if (PROMO_CODES[clean]) {
+    if (clean === 'WELCOME20' && (!user || user.welcomeVoucherUsed)) {
+      const message = !user ? 'Create an account or sign in to use the welcome voucher.' : 'Your account has already used the welcome voucher.'
+      setPromoError(message)
+      say(message)
+      return
+    }
+    const promo = promos.find(item => item.code?.toUpperCase() === clean && item.enabled !== false)
+    if (promo) {
       setPromoCode(clean)
       setPromoError('')
-      say(`Promo ${clean} applied! (-${PROMO_CODES[clean].discount * 100}%)`)
+      say(`Promo ${clean} applied! (-${promo.discount * 100}%)`)
     } else {
-      setPromoError('Invalid promo code. Try WELCOME20 or STUDENT10')
+      setPromoError('Invalid or unavailable promo code')
       say('Invalid voucher code')
+    }
+  }
+
+  const setLoyaltyRules = async rules => {
+    setLoyaltyRulesState(rules)
+    await api('/admin/state/loyaltyRules', { method: 'PUT', body: JSON.stringify({ value: rules }) })
+    if (Number.isFinite(rules.promoDiscount)) {
+      const welcomePromo = promos.find(promo => promo.code?.toUpperCase() === 'WELCOME20')
+      if (welcomePromo) {
+        const { promo } = await api(`/admin/promos/${welcomePromo.id}`, { method: 'PATCH', body: JSON.stringify({ discount: Math.min(0.8, Math.max(0, rules.promoDiscount / 100)) }) })
+        setPromos(rows => rows.map(row => row.id === promo.id ? promo : row))
+      }
     }
   }
 
@@ -285,6 +314,9 @@ export function AppProvider({ children }) {
       headers: f.pay === 'momo' ? { 'Idempotency-Key': f.idempotencyKey || crypto.randomUUID() } : undefined
     })
 
+    if (promoCode?.toUpperCase() === 'WELCOME20' && user) setUser(current => current ? { ...current, welcomeVoucherUsed: true } : current)
+    setPromoCode('')
+    setPromoError('')
     setCart([])
     say(result.message || `Order ${result.order.ref} confirmed!`)
     if (result.checkoutUrl) {
@@ -327,6 +359,7 @@ export function AppProvider({ children }) {
   const staffLogin = async (email, password) => {
     const { user: session } = await api('/auth/staff-login', { method: 'POST', body: JSON.stringify({ email, password }) })
     setStaffUser(session)
+    setUser(session)
     setRole(session.role)
     const [{ orders: currentOrders }, { state }] = await Promise.all([
       api('/admin/orders'),
@@ -345,6 +378,8 @@ export function AppProvider({ children }) {
   const staffLogout = async () => {
     await api('/auth/logout', { method: 'POST' })
     setStaffUser(null)
+    setUser(null)
+    setRole('customer')
     setOrders([])
   }
 
@@ -369,6 +404,7 @@ export function AppProvider({ children }) {
     votes, setVotes, voted, setVoted,
     toast, say,
     promos, setPromos,
+    loyaltyRules, setLoyaltyRules,
     promoCode, setPromoCode, promoError, applyPromo, removePromo,
     role, setRole,
     activeFood, setActiveFood,

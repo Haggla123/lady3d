@@ -184,6 +184,7 @@ const UserSchema = new Schema({
     default: 'customer'
   },
   assignedBranch: { type: String, enum: ['all', 'cug', 'sunyani'] },
+  welcomeVoucherUsedAt: Date,
   active: { type: Boolean, default: true }
 }, { timestamps: true })
 
@@ -219,6 +220,7 @@ const PromoSchema = new Schema({
   code: { type: String, unique: true, uppercase: true },
   discount: { type: Number, min: 0, max: 0.8 },
   label: String,
+  bannerText: { type: String, trim: true, maxlength: 240 },
   enabled: { type: Boolean, default: true },
   startsAt: Date,
   endsAt: Date

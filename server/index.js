@@ -59,7 +59,8 @@ const publicUser = user => ({
   role: user.role,
   branch: user.assignedBranch,
   assignedBranch: user.assignedBranch,
-  active: user.active !== false
+  active: user.active !== false,
+  welcomeVoucherUsed: Boolean(user.welcomeVoucherUsedAt)
 })
 const authBody = z.object({ email: z.string().email().max(254), password: z.string().min(8).max(128) })
 
@@ -191,14 +192,15 @@ app.get('/api/public/config', (_req, res) =>
 // Public bootstrap
 app.get('/api/public/bootstrap', asyncRoute(async (_req, res) => {
   const date = getTodayString()
-  const [menuState, menuItems, branches, deliveryZones, dailyStock, promos, reviews] = await Promise.all([
+  const [menuState, menuItems, branches, deliveryZones, dailyStock, promos, reviews, loyaltyRules] = await Promise.all([
     AppState.findOne({ key: 'menu' }).lean(),
     MenuItem.find().sort({ id: 1 }).lean(),
     Branch.find().lean(),
     DeliveryZone.find({ active: true }).lean(),
     DailyAvailability.find({ date }).lean(),
     Promo.find({ enabled: true }).lean(),
-    Review.find({ show: true }).sort({ createdAt: -1 }).limit(100).lean()
+    Review.find({ show: true }).sort({ createdAt: -1 }).limit(100).lean(),
+    AppState.findOne({ key: 'loyaltyRules' }).lean()
   ])
   res.json({
     menu: menuState?.value || menuItems,
@@ -206,6 +208,7 @@ app.get('/api/public/bootstrap', asyncRoute(async (_req, res) => {
     deliveryZones,
     dailyStock,
     promos: promos.map(promo => ({ ...promo, id: String(promo._id) })),
+    loyaltyRules: loyaltyRules?.value || { spendPerPoint: 10, rewardThreshold: 50, promoDiscount: 20 },
     reviews: reviews.map(review => ({ ...review, id: String(review._id) }))
   })
 }))
@@ -434,6 +437,12 @@ app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
       }).lean()
     : null
   if (promoCode && !promo) return res.status(400).json({ error: 'This promo code is invalid or expired' })
+  const isWelcomeVoucher = promoCode === 'WELCOME20'
+  if (isWelcomeVoucher) {
+    if (!req.user || req.user.role !== 'customer') return res.status(403).json({ error: 'Create an account or sign in to use the welcome voucher.' })
+    const account = await User.findById(req.user.id).select('welcomeVoucherUsedAt').lean()
+    if (!account || account.welcomeVoucherUsedAt) return res.status(409).json({ error: 'The welcome voucher can be used once per customer account.' })
+  }
   const discount = Math.round(subtotal * (promo?.discount || 0) * 100) / 100
   const total = Math.max(0, subtotal - discount + deliveryFee)
 
@@ -443,6 +452,19 @@ app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
   if (!await reserveBranchSlot(input.branch)) {
     await releaseOrderStock(input.branch, normalizedItems)
     return res.status(409).json({ error: 'This branch is at order capacity or has paused new orders. Please try again shortly.' })
+  }
+
+  // Claim the welcome voucher once per registered customer, after capacity checks.
+  if (isWelcomeVoucher) {
+    const claimed = await User.updateOne(
+      { _id: req.user.id, role: 'customer', welcomeVoucherUsedAt: { $exists: false } },
+      { $set: { welcomeVoucherUsedAt: new Date() } }
+    )
+    if (!claimed.modifiedCount) {
+      await releaseOrderStock(input.branch, normalizedItems)
+      await releaseBranchSlot(input.branch)
+      return res.status(409).json({ error: 'The welcome voucher can be used once per customer account.' })
+    }
   }
 
   // If passed, create order with distinct status fields
@@ -506,6 +528,7 @@ app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
   }) } catch (error) {
     await releaseOrderStock(input.branch, normalizedItems)
     await releaseBranchSlot(input.branch)
+    if (isWelcomeVoucher) await User.updateOne({ _id: req.user.id }, { $unset: { welcomeVoucherUsedAt: 1 } })
     throw error
   }
 
@@ -544,6 +567,7 @@ app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
       })
       await releaseOrderStock(order.branch, order.items)
       await releaseBranchSlot(order.branch)
+      if (isWelcomeVoucher) await User.updateOne({ _id: req.user.id }, { $unset: { welcomeVoucherUsedAt: 1 } })
       return res.status(502).json({ error: 'Paystack could not start checkout. Please try again.' })
     }
   }
@@ -988,6 +1012,43 @@ app.patch('/api/admin/branches/:id/controls', requireRoles('Owner', 'Manager'), 
   res.json({ branch })
 }))
 
+app.get('/api/admin/promos', requireRoles('Owner', 'Manager'), asyncRoute(async (_req, res) => {
+  const promos = await Promo.find().sort({ createdAt: -1 }).lean()
+  res.json({ promos: promos.map(promo => ({ ...promo, id: String(promo._id) })) })
+}))
+
+app.post('/api/admin/promos', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
+  const body = z.object({
+    code: z.string().trim().min(2).max(30).regex(/^[A-Za-z0-9_-]+$/),
+    label: z.string().trim().min(2).max(120),
+    bannerText: z.string().trim().max(240).optional().default(''),
+    discount: z.number().min(0).max(0.8),
+    enabled: z.boolean().default(true)
+  }).parse(req.body)
+  const promo = await Promo.create({ ...body, code: body.code.toUpperCase() })
+  res.status(201).json({ promo: { ...promo.toObject(), id: String(promo._id) } })
+}))
+
+app.patch('/api/admin/promos/:id', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
+  const body = z.object({
+    code: z.string().trim().min(2).max(30).regex(/^[A-Za-z0-9_-]+$/).optional(),
+    label: z.string().trim().min(2).max(120).optional(),
+    bannerText: z.string().trim().max(240).optional(),
+    discount: z.number().min(0).max(0.8).optional(),
+    enabled: z.boolean().optional()
+  }).parse(req.body)
+  if (body.code) body.code = body.code.toUpperCase()
+  const promo = await Promo.findByIdAndUpdate(req.params.id, { $set: body }, { new: true, runValidators: true })
+  if (!promo) return res.status(404).json({ error: 'Promotion not found' })
+  res.json({ promo: { ...promo.toObject(), id: String(promo._id) } })
+}))
+
+app.delete('/api/admin/promos/:id', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
+  const result = await Promo.deleteOne({ _id: req.params.id })
+  if (!result.deletedCount) return res.status(404).json({ error: 'Promotion not found' })
+  res.json({ success: true })
+}))
+
 app.get('/api/admin/staff', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
   const filter = { role: { $ne: 'customer' } }
   if (req.user.role === 'Manager' && req.user.assignedBranch !== 'all') filter.assignedBranch = { $in: [req.user.assignedBranch, 'all'] }
@@ -1019,16 +1080,24 @@ app.post('/api/admin/staff', requireRoles('Owner'), asyncRoute(async (req, res) 
 }))
 
 app.patch('/api/admin/staff/:id', requireRoles('Owner'), asyncRoute(async (req, res) => {
-  const { active, role, branch } = z.object({
+  const body = z.object({
+    name: z.string().trim().min(2).max(100).optional(),
+    email: z.string().email().max(254).optional(),
+    phone: z.string().regex(/^\+?[0-9 ()-]{9,18}$/).optional(),
     active: z.boolean().optional(),
     role: z.enum(['Manager', 'Kitchen', 'Driver', 'Cashier']).optional(),
-    branch: z.enum(['cug', 'sunyani', 'all']).optional()
+    branch: z.enum(['cug', 'sunyani', 'all']).optional(),
+    password: z.string().min(8).max(128).optional()
   }).parse(req.body)
 
   const update = {}
-  if (typeof active === 'boolean') update.active = active
-  if (role) update.role = role
-  if (branch) update.assignedBranch = branch
+  if (body.name !== undefined) update.name = body.name
+  if (body.email !== undefined) update.email = body.email.toLowerCase()
+  if (body.phone !== undefined) update.phone = body.phone
+  if (typeof body.active === 'boolean') update.active = body.active
+  if (body.role) update.role = body.role
+  if (body.branch) update.assignedBranch = body.branch
+  if (body.password) update.passwordHash = await bcrypt.hash(body.password, 12)
 
   const user = await User.findOneAndUpdate({ _id: req.params.id, role: { $ne: 'customer' } }, update, { new: true }).select('-passwordHash')
   if (!user) return res.status(404).json({ error: 'Staff account not found' })
@@ -1185,7 +1254,7 @@ const port = Number(process.env.PORT || 4000)
 await mongoose.connect(process.env.MONGODB_URI)
 
 // Outside local development, verify and purge any retained demo staff accounts
-const isLocalDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV
+const isLocalDev = process.env.NODE_ENV === 'development'
 if (!isLocalDev) {
   const demoStaffEmails = [
     'manager.cug@lady3d.local',

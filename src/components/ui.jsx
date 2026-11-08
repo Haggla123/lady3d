@@ -267,7 +267,7 @@ export function FoodDetailModal({ item, onClose }) {
               <div className="modal-header-left">
                 <div className="modal-tag-row">
                   <span className="modal-cat-pill">{item.cat}</span>
-                  <span className="modal-branch-pill">📍 {BRANCHES.find(b => b.id === branch)?.short || 'Campus'}</span>
+                  <span className="modal-branch-pill">{BRANCHES.find(b => b.id === branch)?.short || 'Campus'}</span>
                 </div>
                 <h2 className="modal-food-title">{item.name}</h2>
                 <div className="modal-base-price">{money(basePrice)}</div>
@@ -280,8 +280,8 @@ export function FoodDetailModal({ item, onClose }) {
 
             <div className="modal-specs-row">
               <span className="spec-item">⏱️ Prep: {item.prepTime || '15 min'}</span>
-              <span className="spec-item">✨ Made Fresh Daily</span>
-              <span className="spec-item">🔥 Hot & Ready</span>
+              <span className="spec-item">Made Fresh Daily</span>
+              <span className="spec-item">Hot & Ready</span>
             </div>
 
             <p className="modal-full-desc">{item.desc}</p>
