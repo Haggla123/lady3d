@@ -208,8 +208,8 @@ if (process.env.SEED_OWNER_EMAIL && process.env.SEED_OWNER_PASSWORD) {
 
 // 9. Rotate any active accounts using known seeded/compromised passwords in production
 if (!isLocalDev) {
-  const existingUsers = await User.find({})
-  for (const u of existingUsers) {
+  const candidateStaffUsers = await User.find({ role: { $ne: 'customer' }, active: { $ne: false } })
+  for (const u of candidateStaffUsers) {
     if (u.passwordHash && await bcrypt.compare('StaffPass123!', u.passwordHash)) {
       const rotated = randomBytes(24).toString('base64url')
       u.passwordHash = await bcrypt.hash(rotated, 12)

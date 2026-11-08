@@ -1345,18 +1345,6 @@ if (!isLocalDev) {
   if (removed.deletedCount > 0) {
     console.log(`Purged ${removed.deletedCount} demo staff accounts retained outside local development`)
   }
-
-  // Rotate any active accounts using known seeded/compromised passwords in production
-  const activeUsers = await User.find({})
-  for (const u of activeUsers) {
-    if (u.passwordHash && await bcrypt.compare('StaffPass123!', u.passwordHash)) {
-      const rotated = randomBytes(24).toString('base64url')
-      u.passwordHash = await bcrypt.hash(rotated, 12)
-      u.active = false
-      await u.save()
-      console.log(`Rotated compromised seeded password for account: ${u.email}`)
-    }
-  }
 }
 
 for (const branchId of ['cug', 'sunyani']) {
