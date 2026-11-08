@@ -65,7 +65,7 @@ export function Food({ item, className = '' }) {
 }
 
 export function DishCard({ it, onOpenModal }) {
-  const { price, ok, add, favs, toggleFav, setActiveFood } = useApp()
+  const { price, ok, favs, toggleFav, setActiveFood } = useApp()
   const av = ok(it)
   const isFav = favs.includes(it.id)
   const itemPrice = price(it)
@@ -118,10 +118,11 @@ export function DishCard({ it, onOpenModal }) {
             <button
               type="button"
               className="dish-add-btn"
-              aria-label={`Add ${it.name} to basket`}
+              aria-label={`Customize ${it.name} and add to basket`}
               onClick={(e) => {
                 e.stopPropagation()
-                add(it.id, 1)
+                if (onOpenModal) onOpenModal(it)
+                else setActiveFood(it)
               }}
             >
               <span className="plus-sign">+</span>

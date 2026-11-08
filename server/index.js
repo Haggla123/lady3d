@@ -334,7 +334,7 @@ app.post('/api/auth/login', asyncRoute(async (req, res) => {
   const { email, password } = authBody.parse(req.body)
   const user = await lookupUserByLogin(email)
   const isMatch = await bcrypt.compare(password, user?.passwordHash || DUMMY_PASSWORD_HASH)
-  if (!user || user.active === false || !isMatch) {
+  if (!user || !user.passwordHash || user.active === false || !isMatch) {
     return res.status(401).json({ error: 'Email or password is incorrect' })
   }
   issueSession(res, user)
@@ -345,7 +345,7 @@ app.post('/api/auth/staff-login', asyncRoute(async (req, res) => {
   const { email, password } = authBody.parse(req.body)
   const user = await lookupUserByLogin(email)
   const isMatch = await bcrypt.compare(password, user?.passwordHash || DUMMY_PASSWORD_HASH)
-  if (!user || user.role === 'customer' || user.active === false || !isMatch) {
+  if (!user || !user.passwordHash || user.role === 'customer' || user.active === false || !isMatch) {
     return res.status(401).json({ error: 'Email or password is incorrect' })
   }
   issueSession(res, user)
