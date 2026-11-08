@@ -1,10 +1,20 @@
 import { useState, useEffect } from 'react'
-import { money, useApp } from '../store.jsx'
+import { money, useApp, go } from '../store.jsx'
 import { BRANCHES, EXTRAS } from '../data.js'
 
-export const Link = ({ to, children, className = '', ...p }) => (
-  <a href={'#' + to} className={className} {...p}>{children}</a>
-)
+export const Link = ({ to = '/', children, className = '', onClick, ...p }) => {
+  const target = to.startsWith('/') ? to : '/' + to
+  const handleClick = e => {
+    if (onClick) onClick(e)
+    if (!e.defaultPrevented && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && e.button === 0) {
+      e.preventDefault()
+      go(target)
+    }
+  }
+  return (
+    <a href={target} onClick={handleClick} className={className} {...p}>{children}</a>
+  )
+}
 
 export function Wordmark({ light = false, compact = false }) {
   return (

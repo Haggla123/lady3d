@@ -319,7 +319,7 @@ export function Home() {
 // 3. Modern Menu Screen
 export function Menu() {
   const { menu, cats, ok, branch } = useApp()
-  const init = new URLSearchParams((location.hash.split('?')[1]) || '').get('cat') || 'All'
+  const init = new URLSearchParams(location.search || (location.hash ? location.hash.split('?')[1] : '') || '').get('cat') || 'All'
   const [cat, setCat] = useState(init)
   const [q, setQ] = useState('')
   const [maxPrice, setMaxPrice] = useState(100)
@@ -1489,7 +1489,7 @@ export function SignIn() {
         else if (account.role === 'Owner' || account.role === 'Manager') go('/')
         else go('/account')
       })
-      .catch(error => say(error.message))
+      .catch(error => say(error.message, { type: 'error', title: 'Sign-in Failed' }))
   }
 
   return (
@@ -1623,7 +1623,7 @@ export function SignUp() {
       })
     })
       .then(({ user: account }) => { loginUser(account); say('Your account is ready.'); go('/account') })
-      .catch(error => say(error.message))
+      .catch(error => say(error.message, { type: 'error', title: 'Registration Failed' }))
   }
 
   return (
@@ -1736,7 +1736,7 @@ export function SignUp() {
 
 // 10. Modern Account / Profile Screen (Bon Appétit Screen 5)
 export function Account() {
-  const { user, logoutUser, orders, favs, menu, points, say, canInstall, installPwa, updateProfile, loyaltyRules, api } = useApp()
+  const { user, setUser, logoutUser, orders, favs, menu, points, setPoints, say, canInstall, installPwa, updateProfile, loyaltyRules, api } = useApp()
   const [tab, setTab] = useState('orders')
   const [profile, setProfile] = useState({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '', branch: user?.branch || 'cug', profileImage: user?.profileImage || '' })
   const profileUserId = useRef(user?.id)
@@ -1746,6 +1746,22 @@ export function Account() {
     profileUserId.current = user?.id
     setProfile({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '', branch: user?.branch || 'cug', profileImage: user?.profileImage || '' })
   }, [user?.id])
+  useEffect(() => {
+    if (user?.role !== 'customer') return
+    let active = true
+    const refreshAccount = async () => {
+      try {
+        const { user: current } = await api('/auth/me')
+        if (active) {
+          setUser(current)
+          setPoints(current.loyaltyPoints || 0)
+        }
+      } catch { /* Session may have expired while the account page is open. */ }
+    }
+    refreshAccount()
+    const timer = window.setInterval(refreshAccount, 30_000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [user?.id, user?.role, api, setUser, setPoints])
 
   const handlePictureSelect = event => {
     const file = event.target.files?.[0]
@@ -1997,7 +2013,7 @@ export function Account() {
 
 // 11. Campus & Community Page
 export function Community() {
-  const { votes, setVotes, voted, setVoted, reviews, setReviews, branch, setBranch, say } = useApp()
+  const { votes, castVote, voted, reviews, branch, setBranch, say } = useApp()
   const [r, setR] = useState({ who: '', role: 'CUG Student', stars: 5, text: '' })
   const tot = Object.values(votes).reduce((a, b) => a + b, 0)
 
@@ -2149,10 +2165,11 @@ export function Community() {
                   key={n}
                   className={`poll-option-btn ${voted === n ? 'voted' : ''}`}
                   disabled={!!voted}
-                  onClick={() => {
-                    setVotes({ ...votes, [n]: v + 1 })
-                    setVoted(n)
-                    say('Your vote has been counted')
+                  onClick={async () => {
+                    try {
+                      await castVote(n)
+                      say('Your vote has been counted')
+                    } catch (error) { say(error.message) }
                   }}
                 >
                   <div className="poll-bar-fill" style={{ width: `${pct}%` }} />
@@ -2270,14 +2287,13 @@ export function Community() {
           />
           <button
             className="btn-primary-pill"
-            onClick={() => {
+            onClick={async () => {
               if (!r.text) return say('Please type your review first')
-              setReviews([
-                ...reviews,
-                { id: Date.now(), who: r.who || 'Campus Customer', stars: r.stars, text: r.text, show: true, time: 'Just now' }
-              ])
-              setR({ who: '', role: 'CUG Student', stars: 5, text: '' })
-              say('Thank you for submitting your review.')
+              try {
+                await api('/reviews', { method: 'POST', body: JSON.stringify({ who: r.who || 'Campus Customer', stars: r.stars, text: r.text }) })
+                setR({ who: '', role: 'CUG Student', stars: 5, text: '' })
+                say('Thank you. Your review has been sent for moderation.')
+              } catch (error) { say(error.message) }
             }}
           >
             Submit Review

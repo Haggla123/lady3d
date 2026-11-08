@@ -27,7 +27,7 @@ function StaffLoginPage() {
       else if (session.role === 'Owner' || session.role === 'Manager') go('/')
       else go('/')
     }
-    catch (error) { say(error.message) }
+    catch (error) { say(error.message, { type: 'error', title: 'Sign-in Failed' }) }
     finally { setBusy(false) }
   }
   return (

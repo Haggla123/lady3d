@@ -7,26 +7,51 @@ const Ctx = createContext()
 export const useApp = () => useContext(Ctx)
 export { money, api }
 
+const getRoutePath = () => {
+  if (typeof window === 'undefined') return '/'
+  if (window.location.hash && window.location.hash.startsWith('#/')) {
+    const hashPath = window.location.hash.slice(1)
+    window.history.replaceState(null, '', hashPath)
+    return hashPath
+  }
+  return (window.location.pathname || '/') + (window.location.search || '')
+}
+
 export function useHash() {
-  const [h, setH] = useState(location.hash.slice(1) || '/')
+  const [h, setH] = useState(getRoutePath)
   useEffect(() => {
     const f = () => {
-      setH(location.hash.slice(1) || '/')
+      setH(getRoutePath())
       window.scrollTo(0, 0)
     }
+    window.addEventListener('popstate', f)
     window.addEventListener('hashchange', f)
-    return () => window.removeEventListener('hashchange', f)
+    return () => {
+      window.removeEventListener('popstate', f)
+      window.removeEventListener('hashchange', f)
+    }
   }, [])
   return h
 }
 
+const getWeeklyVoteKey = () => {
+  const monday = new Date()
+  monday.setHours(0, 0, 0, 0)
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+  return `lady3d-vote-${monday.toISOString().slice(0, 10)}`
+}
+
 export const go = p => {
-  location.hash = p
+  const target = p.startsWith('/') ? p : '/' + p
+  window.history.pushState(null, '', target)
+  window.dispatchEvent(new PopStateEvent('popstate'))
+  window.scrollTo(0, 0)
 }
 
 export function AppProvider({ children }) {
   const [menu, setMenu] = useState(MENU)
-  const [cats, setCats] = useState(['Rice', 'Waakye', 'Banku & Fufu', 'Soups & Stews', 'Sides & Drinks'])
+  const [cats, setCatsState] = useState(['Rice', 'Waakye', 'Banku & Fufu', 'Soups & Stews', 'Sides & Drinks'])
+  const [customers, setCustomersState] = useState([])
   const [branch, setBranch] = useState('cug') // default to CUG Annex
   const [orderType, setOrderType] = useState('delivery') // 'collection' | 'delivery'
   const [deliveryZones, setDeliveryZones] = useState(DEFAULT_DELIVERY_ZONES)
@@ -39,10 +64,10 @@ export function AppProvider({ children }) {
   // Customer session
   const [user, setUser] = useState(null)
   const [favs, setFavs] = useState([1, 2])
-  const [points, setPoints] = useState(38)
+  const [points, setPoints] = useState(0)
   const [reviews, setReviews] = useState(REVIEWS)
   const [votes, setVotes] = useState({ 'Waakye Special': 41, 'Jollof & Chicken': 37, 'Fufu & Light Soup': 18 })
-  const [voted, setVoted] = useState(null)
+  const [voted, setVoted] = useState(() => typeof window === 'undefined' ? null : window.localStorage.getItem(getWeeklyVoteKey()))
   const [toast, setToast] = useState('')
   const [promos, setPromos] = useState([
     ...Object.values(PROMO_CODES).map(promo => ({ ...promo, label: promo.label, bannerText: promo.label, enabled: true, on: true }))
@@ -74,13 +99,33 @@ export function AppProvider({ children }) {
 
   const [settings, setSettingsState] = useState(defaultSettings)
 
+  const setCats = async next => {
+    const updated = typeof next === 'function' ? next(cats) : next
+    const { value } = await api('/admin/state/cats', { method: 'PUT', body: JSON.stringify({ value: updated }) })
+    setCatsState(value)
+    return value
+  }
+
+  const setCustomers = async next => {
+    const updated = typeof next === 'function' ? next(customers) : next
+    const { value } = await api('/admin/state/customers', { method: 'PUT', body: JSON.stringify({ value: updated }) })
+    setCustomersState(value)
+    return value
+  }
+
+  const castVote = async option => {
+    if (voted) return
+    const { votes: updated } = await api('/votes', { method: 'POST', body: JSON.stringify({ option }) })
+    setVotes(updated)
+    setVoted(option)
+    if (typeof window !== 'undefined') window.localStorage.setItem(getWeeklyVoteKey(), option)
+    return updated
+  }
+
   const setSettings = async newSettings => {
+    await api('/admin/state/settings', { method: 'PUT', body: JSON.stringify({ value: newSettings }) })
     setSettingsState(newSettings)
-    try {
-      await api('/admin/state/settings', { method: 'PUT', body: JSON.stringify({ value: newSettings }) })
-    } catch (err) {
-      console.warn('Could not persist settings:', err.message)
-    }
+    return newSettings
   }
 
   const [branchStatus, setBranchStatus] = useState({
@@ -94,16 +139,31 @@ export function AppProvider({ children }) {
     let payload = {}
     if (typeof input === 'string') {
       const lower = input.toLowerCase()
-      const isError = lower.includes('fail') || 
+      const isError = options.type === 'error' ||
+                      lower.includes('fail') ||
                       lower.includes('error') || 
                       lower.includes('invalid') ||
                       lower.includes('cannot') ||
-                      lower.includes('restricted')
+                      lower.includes('restricted') ||
+                      lower.includes('incorrect') ||
+                      lower.includes('wrong') ||
+                      lower.includes('denied') ||
+                      lower.includes('unauthorized') ||
+                      lower.includes('not found') ||
+                      lower.includes('required') ||
+                      lower.includes('already exists') ||
+                      lower.includes('too many') ||
+                      lower.includes('could not') ||
+                      lower.includes('unable') ||
+                      lower.includes('expired') ||
+                      lower.includes('not match') ||
+                      lower.includes('disabled') ||
+                      lower.includes('please ')
       const isBasket = lower.includes('basket') || lower.includes('cart')
       
       payload = {
         id: Date.now() + Math.random(),
-        title: options.title || (isBasket ? 'Added to Basket' : isError ? 'Attention' : 'Success'),
+        title: options.title || (isBasket ? 'Added to Basket' : isError ? 'Notice' : 'Success'),
         message: input,
         type: options.type || (isBasket ? 'basket' : isError ? 'error' : 'success'),
         actionLabel: options.actionLabel || (isBasket ? 'View Basket' : ''),
@@ -143,6 +203,7 @@ export function AppProvider({ children }) {
         if (alive) {
           if (bootstrap.menu?.length) setMenu(bootstrap.menu)
           if (bootstrap.reviews) setReviews(bootstrap.reviews)
+          if (bootstrap.votes) setVotes(bootstrap.votes)
           if (Array.isArray(bootstrap.promos)) setPromos(bootstrap.promos)
           if (bootstrap.loyaltyRules) setLoyaltyRulesState(bootstrap.loyaltyRules)
           if (bootstrap.deliveryZones?.length) setDeliveryZones(bootstrap.deliveryZones)
@@ -160,6 +221,7 @@ export function AppProvider({ children }) {
         if (!alive) return
         if (session.role === 'customer') {
           setUser(session)
+          setPoints(session.loyaltyPoints || 0)
           const { orders: mine } = await api('/my/orders')
           if (alive) setOrders(mine || [])
         } else {
@@ -177,7 +239,8 @@ export function AppProvider({ children }) {
             if (alive) setStaff(currentStaff || [])
           }
           if (state.menu) setMenu(state.menu)
-          if (state.cats) setCats(state.cats)
+          if (state.cats) setCatsState(state.cats)
+          if (Array.isArray(state.customers)) setCustomersState(state.customers)
           if (state.loyaltyRules) setLoyaltyRulesState(state.loyaltyRules)
           if (state.settings) setSettingsState(prev => ({ ...prev, ...state.settings }))
         }
@@ -206,6 +269,7 @@ export function AppProvider({ children }) {
 
   const loginUser = userData => {
     setUser(userData)
+    setPoints(userData.loyaltyPoints || 0)
     if (userData.role && userData.role !== 'customer') {
       setStaffUser(userData)
       setRole(userData.role)
@@ -217,11 +281,13 @@ export function AppProvider({ children }) {
   const updateProfile = async profile => {
     const { user: updated } = await api('/auth/profile', { method: 'PUT', body: JSON.stringify(profile) })
     setUser(updated)
+    setPoints(updated.loyaltyPoints || 0)
     return updated
   }
 
   const logoutUser = () => {
     setUser(null)
+    setPoints(0)
     setPromoCode('')
     setPromoError('')
     setStaffUser(null)
@@ -444,6 +510,7 @@ export function AppProvider({ children }) {
     const { user: session } = await api('/auth/staff-login', { method: 'POST', body: JSON.stringify({ email, password }) })
     setStaffUser(session)
     setUser(session)
+    setPoints(session.loyaltyPoints || 0)
     setRole(session.role)
     const [{ orders: currentOrders }, { state }] = await Promise.all([
       api('/admin/orders'),
@@ -455,7 +522,8 @@ export function AppProvider({ children }) {
       setStaff(currentStaff || [])
     }
     if (state.menu) setMenu(state.menu)
-    if (state.cats) setCats(state.cats)
+    if (state.cats) setCatsState(state.cats)
+    if (Array.isArray(state.customers)) setCustomersState(state.customers)
     if (state.settings) setSettingsState(prev => ({ ...prev, ...state.settings }))
     return session
   }
@@ -464,6 +532,7 @@ export function AppProvider({ children }) {
     await api('/auth/logout', { method: 'POST' })
     setStaffUser(null)
     setUser(null)
+    setPoints(0)
     setRole('customer')
     setOrders([])
   }
@@ -471,6 +540,7 @@ export function AppProvider({ children }) {
   const v = {
     menu, setMenu,
     cats, setCats,
+    customers, setCustomers,
     branch, setBranch,
     orderType, setOrderType,
     deliveryZones, setDeliveryZones,
@@ -486,7 +556,7 @@ export function AppProvider({ children }) {
     favs, setFavs, toggleFav,
     points, setPoints,
     reviews, setReviews,
-    votes, setVotes, voted, setVoted,
+    votes, setVotes, voted, setVoted, castVote,
     toast, say, dismissToast,
     promos, setPromos,
     loyaltyRules, setLoyaltyRules,

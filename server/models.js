@@ -160,6 +160,7 @@ const OrderSchema = new Schema({
   paymentVerifiedAt: Date,
   idempotencyKey: { type: String, sparse: true, unique: true },
   checkoutUrl: String,
+  loyaltyPointsAwarded: { type: Number, min: 0 },
   
   // Full Audit & Status Transition History
   statusHistory: [{
@@ -186,6 +187,7 @@ const UserSchema = new Schema({
   },
   assignedBranch: { type: String, enum: ['all', 'cug', 'sunyani'] },
   welcomeVoucherUsedAt: Date,
+  loyaltyPoints: { type: Number, default: 0, min: 0 },
   active: { type: Boolean, default: true }
 }, { timestamps: true })
 

@@ -892,18 +892,22 @@ function Categories() {
   const { cats, setCats, menu, say } = useApp()
   const [newCat, setNewCat] = useState('')
 
-  const handleAddCat = () => {
+  const handleAddCat = async () => {
     if (!newCat.trim()) return say('Enter a category name')
     if (cats.includes(newCat.trim())) return say('Category already exists')
-    setCats([...cats, newCat.trim()])
-    setNewCat('')
-    say(`Category "${newCat.trim()}" added!`)
+    try {
+      await setCats([...cats, newCat.trim()])
+      setNewCat('')
+      say(`Category "${newCat.trim()}" added!`)
+    } catch (error) { say(error.message) }
   }
 
-  const handleDeleteCat = (c) => {
+  const handleDeleteCat = async c => {
     if (confirm(`Delete category "${c}"? Items in it will need reassignment.`)) {
-      setCats(cats.filter(x => x !== c))
-      say(`Category "${c}" removed`)
+      try {
+        await setCats(cats.filter(x => x !== c))
+        say(`Category "${c}" removed`)
+      } catch (error) { say(error.message) }
     }
   }
 
@@ -1026,32 +1030,38 @@ function Customers() {
   const [newCust, setNewCust] = useState({ name: '', phone: '', branch: 'cug', points: 10, status: 'Regular' })
   const [searchCust, setSearchCust] = useState('')
 
-  const handleAddCustomer = () => {
+  const handleAddCustomer = async () => {
     if (!newCust.name.trim() || !newCust.phone.trim()) return say('Please enter customer name and phone')
     const added = {
       id: Date.now(),
       name: newCust.name.trim(),
       phone: newCust.phone.trim(),
       branch: newCust.branch,
-      ordersCount: 1,
-      spent: 35,
+      ordersCount: 0,
+      spent: 0,
       points: +newCust.points || 0,
       status: newCust.status
     }
-    setCustomers([added, ...customers])
-    setNewCust({ name: '', phone: '', branch: 'cug', points: 10, status: 'Regular' })
-    say(`Customer "${added.name}" registered!`)
+    try {
+      await setCustomers([added, ...customers])
+      setNewCust({ name: '', phone: '', branch: 'cug', points: 10, status: 'Regular' })
+      say(`Customer "${added.name}" registered!`)
+    } catch (error) { say(error.message) }
   }
 
-  const handleAdjustPoints = (id, delta) => {
-    setCustomers(customers.map(c => c.id === id ? { ...c, points: Math.max(0, c.points + delta) } : c))
-    say(`Points updated (${delta > 0 ? '+' : ''}${delta})`)
+  const handleAdjustPoints = async (id, delta) => {
+    try {
+      await setCustomers(customers.map(c => c.id === id ? { ...c, points: Math.max(0, c.points + delta) } : c))
+      say(`Points updated (${delta > 0 ? '+' : ''}${delta})`)
+    } catch (error) { say(error.message) }
   }
 
-  const handleDeleteCust = (id, name) => {
+  const handleDeleteCust = async (id, name) => {
     if (confirm(`Remove customer "${name}"?`)) {
-      setCustomers(customers.filter(c => c.id !== id))
-      say(`Removed ${name}`)
+      try {
+        await setCustomers(customers.filter(c => c.id !== id))
+        say(`Removed ${name}`)
+      } catch (error) { say(error.message) }
     }
   }
 
@@ -1634,28 +1644,33 @@ function Analytics() {
 
 // 12. Reviews & Feedback (Moderate, Add Review, Toggle Visible)
 function Reviews() {
-  const { reviews, setReviews, say } = useApp()
+  const { reviews, setReviews, say, api } = useApp()
+  const [reviewRows, setReviewRows] = useState(reviews)
   const [newReview, setNewReview] = useState({ who: '', stars: 5, text: '' })
 
-  const handleAddReview = () => {
+  useEffect(() => {
+    api('/admin/reviews').then(({ reviews: rows }) => setReviewRows(rows || [])).catch(error => say(error.message))
+  }, [])
+
+  const handleAddReview = async () => {
     if (!newReview.who.trim() || !newReview.text.trim()) return say('Please enter reviewer name and feedback')
-    const added = {
-      id: Date.now(),
-      who: newReview.who.trim(),
-      stars: +newReview.stars,
-      text: newReview.text.trim(),
-      show: true,
-      time: 'Just now'
-    }
-    setReviews([added, ...reviews])
-    setNewReview({ who: '', stars: 5, text: '' })
-    say('Review added!')
+    try {
+      const { review } = await api('/admin/reviews', { method: 'POST', body: JSON.stringify({ ...newReview, stars: +newReview.stars }) })
+      setReviewRows(rows => [review, ...rows])
+      setReviews(rows => [review, ...rows])
+      setNewReview({ who: '', stars: 5, text: '' })
+      say('Review added!')
+    } catch (error) { say(error.message) }
   }
 
-  const handleDeleteReview = (id) => {
+  const handleDeleteReview = async id => {
     if (confirm('Delete this review?')) {
-      setReviews(reviews.filter(r => r.id !== id))
-      say('Review removed')
+      try {
+        await api(`/admin/reviews/${id}`, { method: 'DELETE' })
+        setReviewRows(rows => rows.filter(review => review.id !== id))
+        setReviews(rows => rows.filter(review => review.id !== id))
+        say('Review removed')
+      } catch (error) { say(error.message) }
     }
   }
 
@@ -1696,7 +1711,7 @@ function Reviews() {
 
       <Table
         head={['Customer Name', 'Rating', 'Testimonial', 'Public Display', 'Actions']}
-        rows={reviews.map(r => [
+        rows={reviewRows.map(r => [
           <strong key="w">{r.who}</strong>,
           <span key="s" className="stars-gold">{'★'.repeat(r.stars)}</span>,
           <p key="t" className="small">{r.text}</p>,
@@ -1704,9 +1719,13 @@ function Reviews() {
             <input
               type="checkbox"
               checked={r.show}
-              onChange={() => {
-                setReviews(reviews.map(x => x.id === r.id ? { ...x, show: !x.show } : x))
-                say(`Review visibility updated`)
+              onChange={async () => {
+                try {
+                  const { review } = await api(`/admin/reviews/${r.id}`, { method: 'PATCH', body: JSON.stringify({ show: !r.show }) })
+                  setReviewRows(rows => rows.map(item => item.id === review.id ? review : item))
+                  setReviews(rows => rows.map(item => item.id === review.id ? review : item))
+                  say('Review visibility updated')
+                } catch (error) { say(error.message) }
               }}
             />
             <span className="pbd-slider" />
@@ -1994,9 +2013,9 @@ function BranchConsoleDirectory() {
               <span className="badge-chip">Sunyani Only (Locked)</span>
             </div>
           </div>
-          <a href="#/branch/sunyani" className="btn-open-console">
+          <Link to="/branch/sunyani" className="btn-open-console">
             Open Sunyani Branch Console →
-          </a>
+          </Link>
         </div>
 
         {/* Catholic University Campus Annex Card */}
@@ -2018,9 +2037,9 @@ function BranchConsoleDirectory() {
               <span className="badge-chip">CUG Only (Locked)</span>
             </div>
           </div>
-          <a href="#/branch/cug" className="btn-open-console">
+          <Link to="/branch/cug" className="btn-open-console">
             Open Catholic University Console →
-          </a>
+          </Link>
         </div>
       </div>
     </div>

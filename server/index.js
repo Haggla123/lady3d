@@ -47,7 +47,7 @@ const defaultJsonParser = express.json({
   }
 })
 app.use((req, res, next) => {
-  if (req.path === '/api/auth/profile') return next()
+  if (req.method === 'PUT' && req.path === '/api/auth/profile') return next()
   defaultJsonParser(req, res, next)
 })
 app.use(cookieParser())
@@ -60,6 +60,8 @@ app.use('/api/auth', rateLimit({
   message: { error: 'Too many authentication attempts. Please try again in a few minutes.' }
 }))
 app.use('/api/orders', rateLimit({ windowMs: 60 * 1000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false }))
+app.use('/api/reviews', rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: 'draft-8', legacyHeaders: false }))
+app.use('/api/votes', rateLimit({ windowMs: 60 * 1000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false }))
 
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
 const publicUser = user => ({
@@ -72,6 +74,7 @@ const publicUser = user => ({
   branch: user.assignedBranch,
   assignedBranch: user.assignedBranch,
   active: user.active !== false,
+  loyaltyPoints: user.loyaltyPoints || 0,
   welcomeVoucherUsed: Boolean(user.welcomeVoucherUsedAt)
 })
 const authBody = z.object({
@@ -81,7 +84,7 @@ const authBody = z.object({
 
 const lookupUserByLogin = async (identifier) => {
   const clean = (identifier || '').trim().toLowerCase()
-  if (clean === 'admin' || clean === 'admin@lady3d.local' || clean === 'admin@lady3d.com') {
+  if (clean === 'admin' || clean === 'admin@lady3d.local' || clean === 'admin@lady3d.com' || clean === 'owner' || clean === 'owner@lady3d.local' || clean === 'owner@lady3d.com') {
     const owner = await User.findOne({ role: 'Owner' })
     if (owner) return owner
   }
@@ -89,6 +92,23 @@ const lookupUserByLogin = async (identifier) => {
 }
 
 const getTodayString = () => new Date().toISOString().slice(0, 10)
+const getCurrentVoteWeek = () => {
+  const monday = new Date(`${getTodayString()}T00:00:00.000Z`)
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7))
+  return monday.toISOString().slice(0, 10)
+}
+async function getWeeklyVotes() {
+  const weekOf = getCurrentVoteWeek()
+  let state = await AppState.findOne({ key: 'votes' })
+  if (!state) {
+    state = await AppState.create({ key: 'votes', value: { weekOf, counts: {} } })
+  } else if (state.value?.weekOf !== weekOf) {
+    const previous = state.value?.weekOf ? {} : (state.value || {})
+    state.value = { weekOf, counts: previous }
+    await state.save()
+  }
+  return state
+}
 const capacityOrderStatuses = ['pending_payment', 'confirmed', 'preparing', 'ready_for_collection', 'ready_for_dispatch', 'out_for_delivery']
 
 async function reserveBranchSlot(branchId) {
@@ -203,6 +223,28 @@ async function releaseOrderStock(branchId, items) {
   }
 }
 
+async function awardLoyaltyPoints(order) {
+  if (!order.customerId || order.paymentStatus !== 'paid') return 0
+  const customerExists = await User.exists({ _id: order.customerId, role: 'customer' })
+  if (!customerExists) return 0
+  const rules = await AppState.findOne({ key: 'loyaltyRules' }).select('value').lean()
+  const spendPerPoint = Number(rules?.value?.spendPerPoint)
+  if (!Number.isFinite(spendPerPoint) || spendPerPoint < 1) return 0
+  const earned = Math.floor(Math.max(0, (order.subtotal || 0) - (order.discount || 0)) / spendPerPoint)
+  if (!earned) return 0
+  const claim = await Order.updateOne(
+    { _id: order._id, loyaltyPointsAwarded: { $exists: false } },
+    { $set: { loyaltyPointsAwarded: earned } }
+  )
+  if (!claim.modifiedCount) return 0
+  const credited = await User.updateOne({ _id: order.customerId, role: 'customer' }, { $inc: { loyaltyPoints: earned } })
+  if (!credited.modifiedCount) {
+    await Order.updateOne({ _id: order._id, loyaltyPointsAwarded: earned }, { $unset: { loyaltyPointsAwarded: 1 } })
+    return 0
+  }
+  return earned
+}
+
 app.get('/api/health', (_req, res) =>
   res.json({ status: 'ok', database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' })
 )
@@ -216,7 +258,7 @@ app.get('/api/public/config', (_req, res) =>
 // Public bootstrap
 app.get('/api/public/bootstrap', asyncRoute(async (_req, res) => {
   const date = getTodayString()
-  const [menuState, menuItems, branches, deliveryZones, dailyStock, promos, reviews, loyaltyRules] = await Promise.all([
+  const [menuState, menuItems, branches, deliveryZones, dailyStock, promos, reviews, loyaltyRules, votes] = await Promise.all([
     AppState.findOne({ key: 'menu' }).lean(),
     MenuItem.find().sort({ id: 1 }).lean(),
     Branch.find().lean(),
@@ -224,7 +266,8 @@ app.get('/api/public/bootstrap', asyncRoute(async (_req, res) => {
     DailyAvailability.find({ date }).lean(),
     Promo.find({ enabled: true }).lean(),
     Review.find({ show: true }).sort({ createdAt: -1 }).limit(100).lean(),
-    AppState.findOne({ key: 'loyaltyRules' }).lean()
+    AppState.findOne({ key: 'loyaltyRules' }).lean(),
+    getWeeklyVotes()
   ])
   res.json({
     menu: menuState?.value || menuItems,
@@ -233,6 +276,7 @@ app.get('/api/public/bootstrap', asyncRoute(async (_req, res) => {
     dailyStock,
     promos: promos.map(promo => ({ ...promo, id: String(promo._id) })),
     loyaltyRules: loyaltyRules?.value || { spendPerPoint: 10, rewardThreshold: 50, promoDiscount: 20 },
+    votes: votes?.value?.counts || {},
     reviews: reviews.map(review => ({ ...review, id: String(review._id) }))
   })
 }))
@@ -276,7 +320,8 @@ app.post('/api/auth/signup', asyncRoute(async (req, res) => {
 app.post('/api/auth/login', asyncRoute(async (req, res) => {
   const { email, password } = authBody.parse(req.body)
   const user = await lookupUserByLogin(email)
-  if (!user || user.active === false || !(await bcrypt.compare(password, user.passwordHash))) {
+  const isMatch = user ? await bcrypt.compare(password, user.passwordHash) : false
+  if (!user || user.active === false || !isMatch) {
     return res.status(401).json({ error: 'Email or password is incorrect' })
   }
   issueSession(res, user)
@@ -286,7 +331,8 @@ app.post('/api/auth/login', asyncRoute(async (req, res) => {
 app.post('/api/auth/staff-login', asyncRoute(async (req, res) => {
   const { email, password } = authBody.parse(req.body)
   const user = await lookupUserByLogin(email)
-  if (!user || user.role === 'customer' || user.active === false || !(await bcrypt.compare(password, user.passwordHash))) {
+  const isMatch = user ? await bcrypt.compare(password, user.passwordHash) : false
+  if (!user || user.role === 'customer' || user.active === false || !isMatch) {
     return res.status(401).json({ error: 'Email or password is incorrect' })
   }
   issueSession(res, user)
@@ -295,7 +341,7 @@ app.post('/api/auth/staff-login', asyncRoute(async (req, res) => {
 
 app.get('/api/auth/me', requireAuth, (req, res) => res.json({ user: publicUser(req.user) }))
 
-app.put('/api/auth/profile', express.json({ limit: '1mb' }), requireAuth, asyncRoute(async (req, res) => {
+app.put('/api/auth/profile', express.json({ limit: '1250kb' }), requireAuth, asyncRoute(async (req, res) => {
   if (req.user.role !== 'customer') return res.status(403).json({ error: 'Customer profile access required' })
   const body = z.object({
     name: z.string().trim().min(2).max(100),
@@ -340,8 +386,9 @@ app.post('/api/auth/logout', (_req, res) => {
 
 // Claim guest orders by phone
 app.post('/api/my/claim-guest-orders', requireAuth, asyncRoute(async (req, res) => {
+  if (req.user.role !== 'customer') return res.status(403).json({ error: 'Customer account required' })
   const result = await Order.updateMany(
-    { phone: req.user.phone, customerId: { $ne: req.user.id } },
+    { phone: req.user.phone, $or: [{ customerId: { $exists: false } }, { customerId: null }] },
     { $set: { customerId: req.user.id, isGuest: false } }
   )
   res.json({ claimedCount: result.modifiedCount })
@@ -350,7 +397,7 @@ app.post('/api/my/claim-guest-orders', requireAuth, asyncRoute(async (req, res) 
 app.get('/api/my/orders', requireAuth, asyncRoute(async (req, res) => {
   if (req.user.role !== 'customer') return res.status(403).json({ error: 'Customer account required' })
   const orders = await Order.find({
-    $or: [{ customerId: req.user.id }, { phone: req.user.phone }]
+    customerId: req.user.id
   }).sort({ createdAt: -1 }).limit(100).lean()
   res.json({
     orders: orders.map(order => ({
@@ -398,7 +445,16 @@ app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
   if (idempotencyKey && !/^[A-Za-z0-9-]{8,128}$/.test(idempotencyKey)) return res.status(400).json({ error: 'Invalid idempotency key' })
   if (idempotencyKey) {
     const existing = await Order.findOne({ idempotencyKey }).lean()
-    if (existing) return res.status(200).json({ order: existing, checkoutUrl: existing.checkoutUrl })
+    if (existing) {
+      const belongsToUser = existing.customerId
+        ? req.user && String(existing.customerId) === String(req.user.id)
+        : existing.phone === input.phone && existing.name === input.name
+      if (!belongsToUser) return res.status(409).json({ error: 'This payment request was already used.' })
+      return res.status(200).json({
+        order: { ref: existing.ref, total: existing.total, orderStatus: existing.orderStatus, paymentStatus: existing.paymentStatus, deliveryStatus: existing.deliveryStatus },
+        checkoutUrl: existing.checkoutUrl
+      })
+    }
   }
 
   const paymentEmail = input.email || req.user?.email
@@ -816,6 +872,7 @@ app.patch('/api/kitchen/orders/:ref/status', requireAuth, requireRoles('Owner', 
   }
 
   await order.save()
+  if (action === 'complete_pickup') await awardLoyaltyPoints(order)
   res.json({ order })
 }))
 
@@ -955,6 +1012,7 @@ app.patch('/api/delivery/orders/:ref/deliver', requireAuth, requireRoles('Owner'
   await commitOrderStock(order.branch, order.items)
   await releaseBranchSlot(order.branch)
   await order.save()
+  await awardLoyaltyPoints(order)
   res.json({ order })
 }))
 
@@ -1183,6 +1241,29 @@ app.get('/api/admin/reviews', asyncRoute(async (_req, res) => {
   res.json({ reviews: (await Review.find().sort({ createdAt: -1 }).lean()).map(review => ({ ...review, id: String(review._id) })) })
 }))
 
+app.post('/api/admin/reviews', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
+  const body = z.object({
+    who: z.string().trim().min(2).max(100),
+    stars: z.number().int().min(1).max(5),
+    text: z.string().trim().min(5).max(1000)
+  }).parse(req.body)
+  const review = await Review.create({ ...body, show: true, time: 'Just now' })
+  res.status(201).json({ review: { ...review.toObject(), id: String(review._id) } })
+}))
+
+app.patch('/api/admin/reviews/:id', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
+  const body = z.object({ show: z.boolean() }).strict().parse(req.body)
+  const review = await Review.findByIdAndUpdate(req.params.id, { $set: body }, { new: true, runValidators: true }).lean()
+  if (!review) return res.status(404).json({ error: 'Review not found' })
+  res.json({ review: { ...review, id: String(review._id) } })
+}))
+
+app.delete('/api/admin/reviews/:id', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
+  const result = await Review.deleteOne({ _id: req.params.id })
+  if (!result.deletedCount) return res.status(404).json({ error: 'Review not found' })
+  res.json({ success: true })
+}))
+
 // ==========================================
 // MENU MANAGEMENT API (Admins & Managers)
 // ==========================================
@@ -1293,6 +1374,7 @@ app.get('/api/admin/state', asyncRoute(async (req, res) => {
 app.put('/api/admin/state/:key', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
   const { key } = req.params
   if (!allowedStateKeys.includes(key)) return res.status(404).json({ error: 'Unknown setting' })
+  if (key === 'menu' && req.user.role !== 'Owner') return res.status(403).json({ error: 'Only owners can replace the shared menu catalogue.' })
   const value = z.unknown().parse(req.body?.value)
 
   if (key === 'menu' && Array.isArray(value)) {
@@ -1315,6 +1397,18 @@ app.post('/api/reviews', asyncRoute(async (req, res) => {
   }).parse(req.body)
   const review = await Review.create({ ...data, show: false, time: 'Pending moderation' })
   res.status(201).json({ review: { id: review.id, show: review.show } })
+}))
+
+app.post('/api/votes', asyncRoute(async (req, res) => {
+  const { option } = z.object({ option: z.string().trim().min(1).max(80) }).parse(req.body)
+  const state = await getWeeklyVotes()
+  if (!Object.hasOwn(state.value?.counts || {}, option)) return res.status(400).json({ error: 'This poll option is no longer available.' })
+  const updated = await AppState.findOneAndUpdate(
+    { key: 'votes' },
+    { $inc: { [`value.counts.${option}`]: 1 } },
+    { new: true }
+  ).lean()
+  res.json({ votes: updated.value.counts })
 }))
 
 app.use((err, _req, res, _next) => {
