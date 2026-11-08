@@ -7,6 +7,7 @@ import { AppState, Branch, MenuItem, Promo, Review, User, DeliveryZone, DailyAva
 
 if (!process.env.MONGODB_URI) throw new Error('Set MONGODB_URI before seeding')
 await mongoose.connect(process.env.MONGODB_URI)
+console.log('Database connected successfully')
 
 // 1. Seed Global Menu Items
 if (!(await MenuItem.countDocuments())) {
