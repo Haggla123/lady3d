@@ -1522,23 +1522,36 @@ export function SignIn() {
           </label>
 
           <label className="input-field-wrap password-wrap">
-            <div className="password-header-row">
-              <span>Password</span>
+            <span>Password</span>
+            <div className="password-input-row">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                required
+              />
               <button
                 type="button"
-                className="btn-toggle-eye"
-                onClick={() => setShowPassword(!showPassword)}
+                className="btn-toggle-eye password-visibility-toggle"
+                onClick={() => setShowPassword(visible => !visible)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
+                title={showPassword ? 'Hide password' : 'Show password'}
               >
-                {showPassword ? 'Hide' : 'Show'}
+                {showPassword ? (
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+                    <path d="M9.9 5.2A11.5 11.5 0 0 1 12 5c5.2 0 9 4.8 10 7-.4.9-1.5 2.5-3.2 3.9M6.2 6.2C3.9 7.7 2.5 10 2 12c1 2.2 4.8 7 10 7 1.2 0 2.3-.3 3.3-.7" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                )}
               </button>
             </div>
-            <input
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="Enter your password"
-              required
-            />
           </label>
 
           <div className="auth-extras-row">
@@ -1622,7 +1635,7 @@ export function SignUp() {
         password
       })
     })
-      .then(({ user: account }) => { loginUser(account); say('Your account is ready.'); go('/account') })
+      .then(({ user: account }) => { loginUser(account); say('Your account is ready.'); go('/') })
       .catch(error => say(error.message, { type: 'error', title: 'Registration Failed' }))
   }
 
@@ -2014,7 +2027,7 @@ export function Account() {
 // 11. Campus & Community Page
 export function Community() {
   const { votes, castVote, voted, reviews, branch, setBranch, say } = useApp()
-  const [r, setR] = useState({ who: '', role: 'CUG Student', stars: 5, text: '' })
+  const [r, setR] = useState({ who: '', stars: 5, text: '' })
   const tot = Object.values(votes).reduce((a, b) => a + b, 0)
 
   return (
@@ -2291,7 +2304,7 @@ export function Community() {
               if (!r.text) return say('Please type your review first')
               try {
                 await api('/reviews', { method: 'POST', body: JSON.stringify({ who: r.who || 'Campus Customer', stars: r.stars, text: r.text }) })
-                setR({ who: '', role: 'CUG Student', stars: 5, text: '' })
+                setR({ who: '', stars: 5, text: '' })
                 say('Thank you. Your review has been sent for moderation.')
               } catch (error) { say(error.message) }
             }}

@@ -1645,17 +1645,43 @@ function Analytics() {
 // 12. Reviews & Feedback (Moderate, Add Review, Toggle Visible)
 function Reviews() {
   const { reviews, setReviews, say, api } = useApp()
-  const [reviewRows, setReviewRows] = useState(reviews)
+  const [reviewRows, setReviewRows] = useState([])
+  const [reviewLoadStatus, setReviewLoadStatus] = useState('loading')
+  const [reviewLoadError, setReviewLoadError] = useState('')
+  const [pendingReviewIds, setPendingReviewIds] = useState(() => new Set())
   const [newReview, setNewReview] = useState({ who: '', stars: 5, text: '' })
 
   useEffect(() => {
-    api('/admin/reviews').then(({ reviews: rows }) => setReviewRows(rows || [])).catch(error => say(error.message))
+    let cancelled = false
+    const loadReviews = async () => {
+      try {
+        const response = await api('/admin/reviews')
+        if (cancelled) return
+        if (!Array.isArray(response?.reviews)) {
+          const message = 'The server returned an invalid reviews list.'
+          setReviewLoadError(message)
+          setReviewLoadStatus('error')
+          say(message, { type: 'error' })
+          return
+        }
+        setReviewRows(response.reviews)
+        setReviewLoadStatus('ready')
+      } catch (error) {
+        if (cancelled) return
+        setReviewLoadError(error.message)
+        setReviewLoadStatus('error')
+        say(error.message, { type: 'error' })
+      }
+    }
+    loadReviews()
+    return () => { cancelled = true }
   }, [])
 
   const handleAddReview = async () => {
     if (!newReview.who.trim() || !newReview.text.trim()) return say('Please enter reviewer name and feedback')
     try {
       const { review } = await api('/admin/reviews', { method: 'POST', body: JSON.stringify({ ...newReview, stars: +newReview.stars }) })
+      if (!review) throw new Error('The server did not return the new review.')
       setReviewRows(rows => [review, ...rows])
       setReviews(rows => [review, ...rows])
       setNewReview({ who: '', stars: 5, text: '' })
@@ -1709,9 +1735,12 @@ function Reviews() {
         </button>
       </div>
 
+      {reviewLoadStatus === 'loading' && <p role="status" className="muted small">Loading reviews…</p>}
+      {reviewLoadStatus === 'error' && <p role="alert" className="small" style={{ color: 'var(--primary)' }}>Could not load reviews: {reviewLoadError}</p>}
+
       <Table
         head={['Customer Name', 'Rating', 'Testimonial', 'Public Display', 'Actions']}
-        rows={reviewRows.map(r => [
+        rows={reviewLoadStatus === 'ready' ? reviewRows.map(r => [
           <strong key="w">{r.who}</strong>,
           <span key="s" className="stars-gold">{'★'.repeat(r.stars)}</span>,
           <p key="t" className="small">{r.text}</p>,
@@ -1719,13 +1748,16 @@ function Reviews() {
             <input
               type="checkbox"
               checked={r.show}
+              disabled={pendingReviewIds.has(r.id)}
               onChange={async () => {
+                setPendingReviewIds(ids => new Set(ids).add(r.id))
                 try {
                   const { review } = await api(`/admin/reviews/${r.id}`, { method: 'PATCH', body: JSON.stringify({ show: !r.show }) })
                   setReviewRows(rows => rows.map(item => item.id === review.id ? review : item))
                   setReviews(rows => rows.map(item => item.id === review.id ? review : item))
                   say('Review visibility updated')
                 } catch (error) { say(error.message) }
+                finally { setPendingReviewIds(ids => { const next = new Set(ids); next.delete(r.id); return next }) }
               }}
             />
             <span className="pbd-slider" />
@@ -1737,7 +1769,7 @@ function Reviews() {
           >
             Delete
           </button>
-        ])}
+        ]) : []}
       />
     </div>
   )

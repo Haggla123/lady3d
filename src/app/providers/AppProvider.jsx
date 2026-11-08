@@ -9,12 +9,21 @@ export { money, api }
 
 const getRoutePath = () => {
   if (typeof window === 'undefined') return '/'
-  if (window.location.hash && window.location.hash.startsWith('#/')) {
-    const hashPath = window.location.hash.slice(1)
+  if (window.location.hash) {
+    let hashPath = window.location.hash.replace(/^#\/?/, '/')
+    if (!hashPath.startsWith('/')) hashPath = '/' + hashPath
+    if (hashPath.length > 1 && hashPath.endsWith('/')) {
+      hashPath = hashPath.slice(0, -1)
+    }
     window.history.replaceState(null, '', hashPath)
     return hashPath
   }
-  return (window.location.pathname || '/') + (window.location.search || '')
+  let path = (window.location.pathname || '/') + (window.location.search || '')
+  if (path.length > 1 && path.endsWith('/')) {
+    path = path.slice(0, -1)
+    window.history.replaceState(null, '', path)
+  }
+  return path
 }
 
 export function useHash() {

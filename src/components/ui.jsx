@@ -3,10 +3,12 @@ import { money, useApp, go } from '../store.jsx'
 import { BRANCHES, EXTRAS } from '../data.js'
 
 export const Link = ({ to = '/', children, className = '', onClick, ...p }) => {
-  const target = to.startsWith('/') ? to : '/' + to
+  const isStringTarget = typeof to === 'string'
+  const isExternalTarget = isStringTarget && (/^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i.test(to))
+  const target = isStringTarget && !isExternalTarget && !to.startsWith('/') ? '/' + to : to
   const handleClick = e => {
     if (onClick) onClick(e)
-    if (!e.defaultPrevented && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && e.button === 0) {
+    if (!e.defaultPrevented && isStringTarget && !isExternalTarget && (p.target == null || p.target === '_self') && p.download == null && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && e.button === 0) {
       e.preventDefault()
       go(target)
     }

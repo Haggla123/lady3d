@@ -16,16 +16,16 @@ function StaffLoginPage() {
   const signIn = async event => {
     event.preventDefault()
     const cleanIdentifier = email.trim()
-    if (!cleanIdentifier) return say('Please enter your email or username')
-    if (!password) return say('Please enter your password')
+    if (!cleanIdentifier) return say('Please enter your email or username', { type: 'error', title: 'Notice' })
+    if (!password) return say('Please enter your password', { type: 'error', title: 'Notice' })
     setBusy(true)
     try {
       const session = await staffLogin(cleanIdentifier, password)
       if (session.role === 'Kitchen') go('/kitchen')
       else if (session.role === 'Driver') go('/delivery')
       else if (session.role === 'Cashier') go('/branch/' + (session.assignedBranch === 'sunyani' ? 'sunyani' : 'cug') + '/pos')
-      else if (session.role === 'Owner' || session.role === 'Manager') go('/')
-      else go('/')
+      else if (session.role === 'Owner' || session.role === 'Manager') go('/admin')
+      else go('/admin')
     }
     catch (error) { say(error.message, { type: 'error', title: 'Sign-in Failed' }) }
     finally { setBusy(false) }

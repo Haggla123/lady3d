@@ -99,13 +99,35 @@ const getCurrentVoteWeek = () => {
 }
 async function getWeeklyVotes() {
   const weekOf = getCurrentVoteWeek()
-  let state = await AppState.findOne({ key: 'votes' })
-  if (!state) {
-    state = await AppState.create({ key: 'votes', value: { weekOf, counts: {} } })
-  } else if (state.value?.weekOf !== weekOf) {
-    const previous = state.value?.weekOf ? {} : (state.value || {})
-    state.value = { weekOf, counts: previous }
-    await state.save()
+  let state
+  try {
+    state = await AppState.findOneAndUpdate(
+      { key: 'votes' },
+      { $setOnInsert: { value: { weekOf, counts: {} } } },
+      { upsert: true, new: true }
+    )
+  } catch (error) {
+    if (error.code !== 11000) throw error
+    state = await AppState.findOne({ key: 'votes' })
+  }
+
+  if (state.value?.weekOf !== weekOf) {
+    const rolledOver = await AppState.findOneAndUpdate(
+      { key: 'votes', 'value.weekOf': { $ne: weekOf } },
+      [{ $set: { value: {
+        weekOf,
+        counts: { $arrayToObject: { $map: {
+          input: { $objectToArray: { $ifNull: [
+            '$value.counts',
+            { $cond: [{ $eq: [{ $type: '$value.weekOf' }, 'missing'] }, '$value', {}] }
+          ] } },
+          as: 'vote',
+          in: { k: '$$vote.k', v: 0 }
+        } } }
+      } } }],
+      { new: true }
+    )
+    state = rolledOver || await AppState.findOne({ key: 'votes' })
   }
   return state
 }
@@ -872,7 +894,10 @@ app.patch('/api/kitchen/orders/:ref/status', requireAuth, requireRoles('Owner', 
   }
 
   await order.save()
-  if (action === 'complete_pickup') await awardLoyaltyPoints(order)
+  if (action === 'complete_pickup') {
+    try { await awardLoyaltyPoints(order) }
+    catch (error) { console.error('Failed to award loyalty points for completed pickup', error) }
+  }
   res.json({ order })
 }))
 
@@ -1012,7 +1037,8 @@ app.patch('/api/delivery/orders/:ref/deliver', requireAuth, requireRoles('Owner'
   await commitOrderStock(order.branch, order.items)
   await releaseBranchSlot(order.branch)
   await order.save()
-  await awardLoyaltyPoints(order)
+  try { await awardLoyaltyPoints(order) }
+  catch (error) { console.error('Failed to award loyalty points for delivered order', error) }
   res.json({ order })
 }))
 
