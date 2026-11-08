@@ -41,7 +41,7 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173,ht
   .map(x => x.trim())
 app.use(cors({ origin: (origin, callback) => callback(null, !origin || allowedOrigins.includes(origin)), credentials: true }))
 app.use(express.json({
-  limit: '32kb',
+  limit: '1mb',
   verify(req, _res, buffer) {
     if (req.originalUrl.startsWith('/api/payments/paystack/webhook')) req.rawBody = Buffer.from(buffer)
   }
@@ -56,6 +56,7 @@ const publicUser = user => ({
   name: user.name,
   email: user.email,
   phone: user.phone,
+  profileImage: user.profileImage || '',
   role: user.role,
   branch: user.assignedBranch,
   assignedBranch: user.assignedBranch,
@@ -270,10 +271,26 @@ app.put('/api/auth/profile', requireAuth, asyncRoute(async (req, res) => {
   const body = z.object({
     name: z.string().trim().min(2).max(100),
     phone: z.string().regex(/^\+?[0-9 ()-]{9,18}$/),
-    branch: z.enum(['cug', 'sunyani']).optional()
+    branch: z.enum(['cug', 'sunyani']).optional(),
+    profileImage: z.string().max(900_000).optional().refine(value => value === undefined || value === '' || /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/.test(value), 'Use a JPEG, PNG or WebP profile picture')
   }).parse(req.body)
   const user = await User.findByIdAndUpdate(req.user.id, { $set: body }, { new: true }).select('-passwordHash')
   res.json({ user: publicUser(user) })
+}))
+
+app.post('/api/auth/change-password', requireAuth, asyncRoute(async (req, res) => {
+  if (req.user.role !== 'customer') return res.status(403).json({ error: 'Customer account access required' })
+  const body = z.object({
+    currentPassword: z.string().min(1).max(128),
+    newPassword: z.string().min(10).max(128)
+  }).parse(req.body)
+  const user = await User.findById(req.user.id)
+  if (!user || !(await bcrypt.compare(body.currentPassword, user.passwordHash))) {
+    return res.status(400).json({ error: 'Current password is incorrect' })
+  }
+  user.passwordHash = await bcrypt.hash(body.newPassword, 12)
+  await user.save()
+  res.json({ success: true })
 }))
 
 app.post('/api/auth/logout', (_req, res) => {
@@ -1038,13 +1055,24 @@ app.patch('/api/admin/promos/:id', requireRoles('Owner', 'Manager'), asyncRoute(
     enabled: z.boolean().optional()
   }).parse(req.body)
   if (body.code) body.code = body.code.toUpperCase()
-  const promo = await Promo.findByIdAndUpdate(req.params.id, { $set: body }, { new: true, runValidators: true })
+  
+  const idParam = req.params.id
+  const query = mongoose.isValidObjectId(idParam)
+    ? { $or: [{ _id: idParam }, { code: idParam.toUpperCase() }] }
+    : { code: idParam.toUpperCase() }
+
+  const promo = await Promo.findOneAndUpdate(query, { $set: body }, { new: true, runValidators: true })
   if (!promo) return res.status(404).json({ error: 'Promotion not found' })
-  res.json({ promo: { ...promo.toObject(), id: String(promo._id) } })
+  res.json({ promo: { ...promo.toObject(), id: String(promo._id), _id: String(promo._id) } })
 }))
 
 app.delete('/api/admin/promos/:id', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
-  const result = await Promo.deleteOne({ _id: req.params.id })
+  const idParam = req.params.id
+  const query = mongoose.isValidObjectId(idParam)
+    ? { $or: [{ _id: idParam }, { code: idParam.toUpperCase() }] }
+    : { code: idParam.toUpperCase() }
+
+  const result = await Promo.deleteOne(query)
   if (!result.deletedCount) return res.status(404).json({ error: 'Promotion not found' })
   res.json({ success: true })
 }))

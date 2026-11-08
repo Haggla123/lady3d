@@ -1718,10 +1718,45 @@ export function SignUp() {
 
 // 10. Modern Account / Profile Screen (Bon Appétit Screen 5)
 export function Account() {
-  const { user, logoutUser, orders, favs, menu, points, say, canInstall, installPwa, updateProfile, loyaltyRules } = useApp()
+  const { user, logoutUser, orders, favs, menu, points, say, canInstall, installPwa, updateProfile, loyaltyRules, api } = useApp()
   const [tab, setTab] = useState('orders')
-  const [profile, setProfile] = useState({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '', branch: user?.branch || 'cug' })
-  useEffect(() => setProfile({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '', branch: user?.branch || 'cug' }), [user])
+  const [profile, setProfile] = useState({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '', branch: user?.branch || 'cug', profileImage: user?.profileImage || '' })
+  const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
+  useEffect(() => setProfile({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '', branch: user?.branch || 'cug', profileImage: user?.profileImage || '' }), [user])
+
+  const handlePictureSelect = event => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) return say('Choose an image file for your profile picture.')
+    if (file.size > 8 * 1024 * 1024) return say('Choose an image smaller than 8 MB.')
+    const source = URL.createObjectURL(file)
+    const image = new Image()
+    image.onload = () => {
+      const side = Math.min(image.naturalWidth, image.naturalHeight)
+      const left = (image.naturalWidth - side) / 2
+      const top = (image.naturalHeight - side) / 2
+      const canvas = document.createElement('canvas')
+      canvas.width = 512
+      canvas.height = 512
+      canvas.getContext('2d').drawImage(image, left, top, side, side, 0, 0, 512, 512)
+      setProfile(current => ({ ...current, profileImage: canvas.toDataURL('image/webp', 0.82) }))
+      URL.revokeObjectURL(source)
+    }
+    image.onerror = () => { URL.revokeObjectURL(source); say('That image could not be opened. Choose a JPEG, PNG or WebP image.') }
+    image.src = source
+    event.target.value = ''
+  }
+
+  const handlePasswordChange = async event => {
+    event.preventDefault()
+    if (passwords.newPassword.length < 10) return say('Use a new password with at least 10 characters.')
+    if (passwords.newPassword !== passwords.confirmPassword) return say('The new passwords do not match.')
+    try {
+      await api('/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: passwords.currentPassword, newPassword: passwords.newPassword }) })
+      setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' })
+      say('Password changed successfully.')
+    } catch (error) { say(error.message) }
+  }
 
   if (!user) {
     return <SignIn />
@@ -1734,9 +1769,7 @@ export function Account() {
       {/* Profile Card Header */}
       <div className="profile-banner-card">
         <div className="profile-avatar-wrap">
-          <span className="profile-avatar-letters">
-            {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-          </span>
+          {profile.profileImage ? <img src={profile.profileImage} alt="Profile" className="account-profile-picture" /> : <span className="profile-avatar-letters">{user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}</span>}
         </div>
         <div className="profile-meta-info">
           <h2 className="profile-user-name">{user.name}</h2>
@@ -1897,7 +1930,14 @@ export function Account() {
       )}
 
       {tab === 'profile' && (
-        <div className="account-settings-card">
+        <div className="account-profile-settings">
+          <div className="account-settings-card">
+          <label className="account-picture-picker">
+            <span className="account-picture-preview">{profile.profileImage ? <img src={profile.profileImage} alt="Profile preview" /> : <span>{user.name.slice(0, 1).toUpperCase()}</span>}</span>
+            <span><b>Profile picture</b><small>Upload a square or portrait image</small></span>
+            <input type="file" accept="image/*" onChange={handlePictureSelect} />
+          </label>
+          {profile.profileImage && <button className="account-remove-picture" onClick={() => setProfile({ ...profile, profileImage: '' })}>Remove profile picture</button>}
           <label className="input-field-wrap">
             <span>Name</span>
             <input value={profile.name} onChange={e => setProfile({ ...profile, name: e.target.value })} />
@@ -1911,9 +1951,17 @@ export function Account() {
             <span>Preferred Branch</span>
             <select value={profile.branch} onChange={e => setProfile({ ...profile, branch: e.target.value })}><option value="cug">Catholic University (Campus Annex)</option><option value="sunyani">Sunyani (Main Branch)</option></select>
           </label>
-          <button className="btn-order-cta" onClick={() => updateProfile({ name: profile.name, phone: profile.phone, branch: profile.branch }).then(() => say('Profile updated.')).catch(error => say(error.message))}>
+          <button className="btn-order-cta" onClick={() => updateProfile({ name: profile.name, phone: profile.phone, branch: profile.branch, profileImage: profile.profileImage }).then(() => say('Profile updated.')).catch(error => say(error.message))}>
             Save Changes
           </button>
+          </div>
+          <form className="account-settings-card account-password-form" onSubmit={handlePasswordChange}>
+            <h3>Change password</h3>
+            <label className="input-field-wrap"><span>Current password</span><input type="password" autoComplete="current-password" required value={passwords.currentPassword} onChange={e => setPasswords({ ...passwords, currentPassword: e.target.value })} /></label>
+            <label className="input-field-wrap"><span>New password</span><input type="password" autoComplete="new-password" minLength={10} required value={passwords.newPassword} onChange={e => setPasswords({ ...passwords, newPassword: e.target.value })} /></label>
+            <label className="input-field-wrap"><span>Confirm new password</span><input type="password" autoComplete="new-password" minLength={10} required value={passwords.confirmPassword} onChange={e => setPasswords({ ...passwords, confirmPassword: e.target.value })} /></label>
+            <button className="btn-order-cta" type="submit">Update Password</button>
+          </form>
         </div>
       )}
     </div>

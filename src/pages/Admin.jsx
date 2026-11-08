@@ -1371,19 +1371,35 @@ function Promos() {
   const [form, setForm] = useState(emptyPromo)
   const [editingId, setEditingId] = useState(null)
   const [savingPromoId, setSavingPromoId] = useState(null)
-  useEffect(() => { api('/admin/promos').then(({ promos: rows }) => setPromos(rows)).catch(error => say(error.message)) }, [])
+
+  const loadPromos = async () => {
+    try {
+      const { promos: rows } = await api('/admin/promos')
+      if (Array.isArray(rows)) {
+        setPromos(rows.map(r => ({ ...r, id: String(r.id || r._id || r.code) })))
+      }
+    } catch (error) {
+      say(error.message)
+    }
+  }
+
+  useEffect(() => {
+    loadPromos()
+  }, [])
 
   const savePromo = async () => {
     try {
       const payload = { ...form, discount: Number(form.discount) }
       if (editingId) {
         const { promo } = await api(`/admin/promos/${editingId}`, { method: 'PATCH', body: JSON.stringify(payload) })
-        setPromos(rows => rows.map(row => row.id === editingId ? promo : row))
-        say('Promotion updated')
+        const normalized = { ...promo, id: String(promo.id || promo._id || promo.code) }
+        setPromos(rows => rows.map(row => (row.id === editingId || row._id === editingId || row.code === editingId) ? normalized : row))
+        say('Promotion updated successfully')
       } else {
         const { promo } = await api('/admin/promos', { method: 'POST', body: JSON.stringify(payload) })
-        setPromos(rows => [promo, ...rows])
-        say('Promotion created')
+        const normalized = { ...promo, id: String(promo.id || promo._id || promo.code) }
+        setPromos(rows => [normalized, ...rows.filter(r => r.code !== normalized.code)])
+        say('Promotion created successfully')
       }
       setForm(emptyPromo)
       setEditingId(null)
@@ -1393,39 +1409,125 @@ function Promos() {
   return (
     <div className="pbd-white-card">
       <div className="pbd-card-head-row">
-        <h3>Promotions & Banner Codes</h3>
-        <span className="muted small">Manage homepage announcements & student discount banners</span>
+        <div>
+          <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>Promotions & Banner Codes</h3>
+          <span className="muted small">Manage homepage announcements & student discount vouchers</span>
+        </div>
+        <button
+          className="btn-sound-small"
+          onClick={loadPromos}
+          title="Reload latest promos from database"
+        >
+          Refresh List
+        </button>
       </div>
 
-      <div id="promo-editor" className="pbd-add-meal-grid mt-2">
+      <div id="promo-editor" className="pbd-add-meal-grid mt-2" style={{ background: '#FAF7F4', padding: '16px', borderRadius: '12px', border: '1px solid #EFE6DC' }}>
         <label><span className="field-label-small">Voucher Code</span><input className="pbd-input" placeholder="e.g. STUDENT10" value={form.code} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} /></label>
         <label><span className="field-label-small">Promotion Name</span><input className="pbd-input" placeholder="Student discount" value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} /></label>
         <label><span className="field-label-small">Discount (%)</span><input className="pbd-input" type="number" min="0" max="80" value={Math.round(form.discount * 100)} onChange={e => setForm({ ...form, discount: Number(e.target.value) / 100 })} /></label>
         <label><span className="field-label-small">Customer Banner Message</span><input className="pbd-input" maxLength="240" placeholder="Use this code on your next order" value={form.bannerText} onChange={e => setForm({ ...form, bannerText: e.target.value })} /></label>
-        <div className="row gap"><button className="btn-pbd-action" onClick={savePromo}>{editingId ? 'Save Changes' : '+ Add Promotion'}</button>{editingId && <button className="btn-del-sm" onClick={() => { setEditingId(null); setForm(emptyPromo) }}>Cancel</button>}</div>
+        <div className="row gap" style={{ gridColumn: '1 / -1', marginTop: '6px' }}>
+          <button className="btn-pbd-action" onClick={savePromo}>{editingId ? 'Save Changes' : '+ Add Promotion'}</button>
+          {editingId && <button className="btn-del-sm" onClick={() => { setEditingId(null); setForm(emptyPromo) }}>Cancel</button>}
+        </div>
       </div>
 
-      <p className="muted small">Changes save to the database. Disabled promotions disappear from the customer banner and checkout.</p>
+      <p className="muted small mt-2">Changes save directly to database. Paused promotions are safely kept in storage but disappear from the customer banner and checkout.</p>
 
       <div className="pbd-promos-list mt-3">
-        {promos.map(p => (
-          <div key={p.id} className="pbd-promo-item">
-            <div><strong>{p.label} ({p.code})</strong><p className="muted small">{Math.round((p.discount || 0) * 100)}% off · {p.bannerText || 'No banner message'}</p></div>
-            <div className="row gap align-center">
-              <button className="btn-del-sm" disabled={savingPromoId === p.id} onClick={async () => {
-                setSavingPromoId(p.id)
-                try {
-                  const { promo } = await api(`/admin/promos/${p.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: p.enabled === false }) })
-                  setPromos(rows => rows.map(x => x.id === p.id ? promo : x))
-                  say(promo.enabled ? `${promo.code} is active` : `${promo.code} is paused`)
-                } catch (error) { say(error.message) }
-                finally { setSavingPromoId(null) }
-              }}>{savingPromoId === p.id ? 'Saving…' : p.enabled === false ? 'Enable' : 'Pause'}</button>
-              <button className="btn-del-sm" onClick={() => { setEditingId(p.id); setForm({ code: p.code, label: p.label, bannerText: p.bannerText || '', discount: p.discount, enabled: p.enabled !== false }); document.getElementById('promo-editor')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}>Edit</button>
-              <button className="btn-del-sm" onClick={async () => { if (!confirm(`Delete promotion ${p.code}?`)) return; try { await api(`/admin/promos/${p.id}`, { method: 'DELETE' }); setPromos(rows => rows.filter(x => x.id !== p.id)); say('Promotion deleted') } catch (error) { say(error.message) } }}>Delete</button>
+        {promos.map(p => {
+          const promoId = String(p.id || p._id || p.code)
+          const isPaused = p.enabled === false
+          return (
+            <div key={promoId} className="pbd-promo-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '14px 16px', background: '#FFFFFF', border: '1px solid #EFE6DC', borderRadius: '10px', marginBottom: '10px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <strong style={{ fontSize: '15px', color: '#1C1917' }}>{p.label} ({p.code})</strong>
+                  <span style={{
+                    background: isPaused ? '#FEE2E2' : '#DCFCE7',
+                    color: isPaused ? '#991B1B' : '#15803D',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    textTransform: 'uppercase'
+                  }}>
+                    {isPaused ? 'Paused' : 'Active'}
+                  </span>
+                </div>
+                <p className="muted small" style={{ margin: '4px 0 0 0', color: '#78716C' }}>
+                  {Math.round((p.discount || 0) * 100)}% off · {p.bannerText || 'No banner message'}
+                </p>
+              </div>
+
+              <div className="row gap align-center">
+                <button
+                  className="btn-del-sm"
+                  disabled={savingPromoId === promoId}
+                  style={{
+                    background: isPaused ? '#DCFCE7' : '#FEE2E2',
+                    color: isPaused ? '#15803D' : '#991B1B',
+                    border: 'none',
+                    fontWeight: 700,
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer'
+                  }}
+                  onClick={async () => {
+                    setSavingPromoId(promoId)
+                    try {
+                      const nextEnabled = p.enabled === false
+                      const { promo } = await api(`/admin/promos/${promoId}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify({ enabled: nextEnabled })
+                      })
+                      const normalized = { ...promo, id: String(promo.id || promo._id || promo.code) }
+                      setPromos(rows => rows.map(x => (x.id === promoId || x._id === promoId || x.code === p.code) ? normalized : x))
+                      say(normalized.enabled !== false ? `${normalized.code} is active` : `${normalized.code} is paused`)
+                    } catch (error) { say(error.message) }
+                    finally { setSavingPromoId(null) }
+                  }}
+                >
+                  {savingPromoId === promoId ? 'Saving…' : isPaused ? 'Enable' : 'Pause'}
+                </button>
+
+                <button
+                  className="btn-del-sm"
+                  style={{ background: '#F5EFEB', color: '#44403C', border: '1px solid #E5D9CE', fontWeight: 700, padding: '6px 12px', borderRadius: '6px', cursor: 'pointer' }}
+                  onClick={() => {
+                    setEditingId(promoId)
+                    setForm({
+                      code: p.code,
+                      label: p.label,
+                      bannerText: p.bannerText || '',
+                      discount: p.discount,
+                      enabled: p.enabled !== false
+                    })
+                    document.getElementById('promo-editor')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                  }}
+                >
+                  Edit
+                </button>
+
+                <button
+                  className="btn-del-sm"
+                  style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', fontWeight: 700, padding: '6px 12px', borderRadius: '6px', cursor: 'pointer' }}
+                  onClick={async () => {
+                    if (!confirm(`Delete promotion ${p.code}?`)) return
+                    try {
+                      await api(`/admin/promos/${promoId}`, { method: 'DELETE' })
+                      setPromos(rows => rows.filter(x => x.id !== promoId && x._id !== promoId && x.code !== p.code))
+                      say('Promotion deleted')
+                    } catch (error) { say(error.message) }
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
@@ -1611,77 +1713,235 @@ function Reviews() {
   )
 }
 
-// 13. Settings Tab (Official Numbers, WhatsApp, Hours)
+// 13. Settings Tab (Official Numbers, WhatsApp, Hours, Business Identity)
 function Settings() {
-  const { settings, setSettings, say } = useApp()
-  const [s, setS] = useState(settings)
+  const { settings, setSettings, say, api } = useApp()
+  const defaultSettings = {
+    businessName: "Lady 3D's Catering Services",
+    cugWhatsapp: "053 129 9243",
+    sunyaniWhatsapp: "053 129 9243",
+    cateringPhone: "024 465 0474",
+    generalPhone: "027 691 3089",
+    hours: "Mon - Sat: 8:00 AM - 9:00 PM | Sun: 12:00 PM - 8:00 PM",
+    currency: "GH₵",
+    cugAddress: "Fiapre Campus, Catholic University of Ghana, Sunyani",
+    sunyaniAddress: "Market Circle / Main Road, Sunyani",
+    supportEmail: "info@lady3d.com",
+    orderNotificationSound: true
+  }
 
-  const handleSave = () => {
-    setSettings(s)
-    say('Official store settings saved successfully!')
+  const [s, setS] = useState(() => ({ ...defaultSettings, ...(settings || {}) }))
+  const [saving, setSaving] = useState(false)
+  const [savedSuccess, setSavedSuccess] = useState(false)
+
+  useEffect(() => {
+    if (settings) {
+      setS(prev => ({ ...prev, ...settings }))
+    }
+    // Fetch fresh state from server
+    if (api) {
+      api('/admin/state')
+        .then(({ state }) => {
+          if (state?.settings) {
+            setS(prev => ({ ...prev, ...state.settings }))
+          }
+        })
+        .catch(() => {})
+    }
+  }, [settings])
+
+  const handleSave = async (e) => {
+    e?.preventDefault()
+    setSaving(true)
+    setSavedSuccess(false)
+    try {
+      if (setSettings) await setSettings(s)
+      else if (api) await api('/admin/state/settings', { method: 'PUT', body: JSON.stringify({ value: s }) })
+      say('Official store settings saved successfully!')
+      setSavedSuccess(true)
+      setTimeout(() => setSavedSuccess(false), 4000)
+    } catch (err) {
+      say(err.message || 'Failed to save settings')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleReset = () => {
+    if (confirm('Reset settings to Lady 3D official defaults?')) {
+      setS(defaultSettings)
+      say('Settings reset to defaults. Click Save to persist.')
+    }
   }
 
   return (
-    <div className="pbd-white-card">
-      <div className="pbd-card-head-row">
-        <h3>Branch Hotlines & Official Contacts</h3>
-        <span className="muted small">These numbers power the 1-tap WhatsApp Kitchen Dispatch</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      
+      {savedSuccess && (
+        <div style={{ background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC', padding: '12px 18px', borderRadius: '10px', fontWeight: 700, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>Store settings saved successfully and live across customer and staff consoles!</span>
+        </div>
+      )}
+
+      {/* Card 1: Business Identity & Schedule */}
+      <div className="pbd-white-card">
+        <div className="pbd-card-head-row">
+          <div>
+            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>Business Identity & Operating Hours</h3>
+            <span className="muted small">Brand title, working hours, and operational currency</span>
+          </div>
+        </div>
+
+        <div className="pbd-settings-grid">
+          <label>
+            <span className="field-label-small">Business Name</span>
+            <input
+              value={s.businessName || ''}
+              onChange={e => setS({ ...s, businessName: e.target.value })}
+              className="pbd-input"
+              placeholder="e.g. Lady 3D's Catering Services"
+            />
+          </label>
+
+          <label>
+            <span className="field-label-small">Operating Schedule / Hours</span>
+            <input
+              value={s.hours || ''}
+              onChange={e => setS({ ...s, hours: e.target.value })}
+              className="pbd-input"
+              placeholder="e.g. Mon - Sat: 8:00 AM - 9:00 PM"
+            />
+          </label>
+
+          <label>
+            <span className="field-label-small">Currency Symbol</span>
+            <input
+              value={s.currency || ''}
+              onChange={e => setS({ ...s, currency: e.target.value })}
+              className="pbd-input"
+              placeholder="GH₵"
+            />
+          </label>
+
+          <label>
+            <span className="field-label-small">Support / Inquiries Email</span>
+            <input
+              type="email"
+              value={s.supportEmail || ''}
+              onChange={e => setS({ ...s, supportEmail: e.target.value })}
+              className="pbd-input"
+              placeholder="e.g. info@lady3d.com"
+            />
+          </label>
+        </div>
       </div>
 
-      <div className="pbd-settings-grid">
-        <label>
-          <span>Business Name</span>
-          <input
-            value={s.businessName}
-            onChange={e => setS({ ...s, businessName: e.target.value })}
-            className="pbd-input"
-          />
-        </label>
-        <label>
-          <span>Catholic University Annex WhatsApp</span>
-          <input
-            value={s.cugWhatsapp}
-            onChange={e => setS({ ...s, cugWhatsapp: e.target.value })}
-            className="pbd-input"
-          />
-        </label>
-        <label>
-          <span>Sunyani Main Branch WhatsApp</span>
-          <input
-            value={s.sunyaniWhatsapp}
-            onChange={e => setS({ ...s, sunyaniWhatsapp: e.target.value })}
-            className="pbd-input"
-          />
-        </label>
-        <label>
-          <span>Catering Bookings Line</span>
-          <input
-            value={s.cateringPhone}
-            onChange={e => setS({ ...s, cateringPhone: e.target.value })}
-            className="pbd-input"
-          />
-        </label>
-        <label>
-          <span>General Phone Line</span>
-          <input
-            value={s.generalPhone}
-            onChange={e => setS({ ...s, generalPhone: e.target.value })}
-            className="pbd-input"
-          />
-        </label>
-        <label>
-          <span>Operating Hours</span>
-          <input
-            value={s.hours}
-            onChange={e => setS({ ...s, hours: e.target.value })}
-            className="pbd-input"
-          />
-        </label>
+      {/* Card 2: Branch WhatsApp Hotlines & Physical Addresses */}
+      <div className="pbd-white-card">
+        <div className="pbd-card-head-row">
+          <div>
+            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>Branch WhatsApp Hotlines & Locations</h3>
+            <span className="muted small">These numbers power the 1-tap WhatsApp Kitchen Order Dispatch & receipt routing</span>
+          </div>
+        </div>
+
+        <div className="pbd-settings-grid">
+          <label>
+            <span className="field-label-small">Catholic University Annex (CUG) WhatsApp</span>
+            <input
+              value={s.cugWhatsapp || ''}
+              onChange={e => setS({ ...s, cugWhatsapp: e.target.value })}
+              className="pbd-input"
+              placeholder="053 129 9243"
+            />
+          </label>
+
+          <label>
+            <span className="field-label-small">CUG Campus Location / Address</span>
+            <input
+              value={s.cugAddress || ''}
+              onChange={e => setS({ ...s, cugAddress: e.target.value })}
+              className="pbd-input"
+              placeholder="Fiapre Campus, Catholic University of Ghana"
+            />
+          </label>
+
+          <label>
+            <span className="field-label-small">Sunyani Main Branch WhatsApp</span>
+            <input
+              value={s.sunyaniWhatsapp || ''}
+              onChange={e => setS({ ...s, sunyaniWhatsapp: e.target.value })}
+              className="pbd-input"
+              placeholder="053 129 9243"
+            />
+          </label>
+
+          <label>
+            <span className="field-label-small">Sunyani Main Location / Address</span>
+            <input
+              value={s.sunyaniAddress || ''}
+              onChange={e => setS({ ...s, sunyaniAddress: e.target.value })}
+              className="pbd-input"
+              placeholder="Market Circle / Main Road, Sunyani"
+            />
+          </label>
+        </div>
       </div>
 
-      <button className="btn-pbd-action mt-3" onClick={handleSave}>
-        Save Business Settings
-      </button>
+      {/* Card 3: Direct Phone & Event Booking Lines */}
+      <div className="pbd-white-card">
+        <div className="pbd-card-head-row">
+          <div>
+            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>Catering Bookings & General Enquiries</h3>
+            <span className="muted small">Phone lines displayed on customer checkout receipts and footer</span>
+          </div>
+        </div>
+
+        <div className="pbd-settings-grid">
+          <label>
+            <span className="field-label-small">Catering Bookings Line</span>
+            <input
+              value={s.cateringPhone || ''}
+              onChange={e => setS({ ...s, cateringPhone: e.target.value })}
+              className="pbd-input"
+              placeholder="024 465 0474"
+            />
+          </label>
+
+          <label>
+            <span className="field-label-small">General Phone Line</span>
+            <input
+              value={s.generalPhone || ''}
+              onChange={e => setS({ ...s, generalPhone: e.target.value })}
+              className="pbd-input"
+              placeholder="027 691 3089"
+            />
+          </label>
+        </div>
+      </div>
+
+      {/* Action Footer */}
+      <div className="pbd-white-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        <button
+          type="button"
+          className="btn-del-sm"
+          onClick={handleReset}
+          style={{ background: '#F5EFEB', color: '#57534E', border: '1px solid #E5D9CE', padding: '10px 18px', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}
+        >
+          Reset to Defaults
+        </button>
+
+        <button
+          type="button"
+          className="btn-pbd-action"
+          disabled={saving}
+          onClick={handleSave}
+          style={{ padding: '12px 28px', fontSize: '14px', fontWeight: 800, borderRadius: '8px', cursor: 'pointer' }}
+        >
+          {saving ? 'Saving Settings…' : 'Save Business Settings'}
+        </button>
+      </div>
+
     </div>
   )
 }
@@ -1778,6 +2038,7 @@ const VIEWS = {
 
 // Main Admin Component with Red & White Theme + Logout functionality
 export default function Admin({ section = 'overview' }) {
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const { role, staffUser, staffLogout, say } = useApp()
   const allowed = (ROLES[role] || []).includes(section)
   const ActiveView = VIEWS[section] || Overview
@@ -1788,8 +2049,9 @@ export default function Admin({ section = 'overview' }) {
 
   return (
     <div className="pbd-canvas-wrapper">
-      <div className="pbd-dashboard-shell">
+      <div className="pbd-dashboard-shell" style={{ gridTemplateColumns: sidebarOpen ? '240px minmax(0, 1fr)' : '1fr' }}>
         {/* Panel 1: Left Signature Red Sidebar */}
+        {sidebarOpen && (
         <aside className="pbd-sidebar">
           {/* Official Lady 3D Logo Brand Header */}
           <div className="pbd-brand-header">
@@ -1804,6 +2066,19 @@ export default function Admin({ section = 'overview' }) {
               <span className="pbd-brand-title-text">LADY 3D’S</span>
               <span className="pbd-brand-sub-text">CATERING SERVICES</span>
             </div>
+            <button
+              type="button"
+              className="pbd-sidebar-collapse-btn"
+              onClick={() => setSidebarOpen(false)}
+              title="Hide sidebar"
+              aria-label="Hide sidebar"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+                <path d="M9 3v18"/>
+                <path d="m16 15-3-3 3-3"/>
+              </svg>
+            </button>
           </div>
 
           {/* Navigation Links with Red & White Theme */}
@@ -1863,13 +2138,47 @@ export default function Admin({ section = 'overview' }) {
             </div>
           </div>
         </aside>
+        )}
 
         {/* Panel 2: Center White Main Content */}
         <main className="pbd-main-content">
           <header className="pbd-content-header">
-            <h1 className="pbd-page-heading">
-              {ADMIN_NAV.find(n => n[0] === section)?.[1] || 'Dashboard'}
-            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              {!sidebarOpen && (
+                <button
+                  type="button"
+                  className="pbd-sidebar-reveal-btn"
+                  onClick={() => setSidebarOpen(true)}
+                  title="Reveal sidebar"
+                  aria-label="Reveal sidebar"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+                    <path d="M9 3v18"/>
+                    <path d="m14 9 3 3-3 3"/>
+                  </svg>
+                  <span>Reveal Sidebar</span>
+                </button>
+              )}
+              {sidebarOpen && (
+                <button
+                  type="button"
+                  className="pbd-sidebar-toggle-ghost-btn"
+                  onClick={() => setSidebarOpen(false)}
+                  title="Hide sidebar"
+                  aria-label="Hide sidebar"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+                    <path d="M9 3v18"/>
+                    <path d="m16 15-3-3 3-3"/>
+                  </svg>
+                </button>
+              )}
+              <h1 className="pbd-page-heading">
+                {ADMIN_NAV.find(n => n[0] === section)?.[1] || 'Dashboard'}
+              </h1>
+            </div>
 
             <div className="pbd-header-right">
               <span className="pbd-role-pill">Signed in: {staffUser?.name} · {role}</span>

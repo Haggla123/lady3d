@@ -73,6 +73,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
   // When at the CUG console, it is impossible to toggle or switch to Sunyani.
   const lockedBranchId = branchId === 'sunyani' ? 'sunyani' : 'cug'
   const currentBranch = BRANCHES.find(b => b.id === lockedBranchId) || BRANCHES[0]
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const {
     menu,
@@ -400,8 +401,9 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
 
   return (
     <div className="pbd-canvas-wrapper">
-      <div className="pbd-dashboard-shell">
-        {/* Panel 1: Left Signature Red Sidebar (Static / Fixed - Just like Admin) */}
+      <div className="pbd-dashboard-shell" style={{ gridTemplateColumns: sidebarOpen ? '240px minmax(0, 1fr)' : '1fr' }}>
+        {/* Panel 1: Left Signature Red Sidebar */}
+        {sidebarOpen && (
         <aside className="pbd-sidebar">
           {/* Official Lady 3D Logo Brand Header */}
           <div className="pbd-brand-header">
@@ -418,6 +420,19 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                 {lockedBranchId === 'sunyani' ? 'SUNYANI MAIN' : 'CUG CAMPUS ANNEX'}
               </span>
             </div>
+            <button
+              type="button"
+              className="pbd-sidebar-collapse-btn"
+              onClick={() => setSidebarOpen(false)}
+              title="Hide sidebar"
+              aria-label="Hide sidebar"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+                <path d="M9 3v18"/>
+                <path d="m16 15-3-3 3-3"/>
+              </svg>
+            </button>
           </div>
 
           {/* STRICT BRANCH LOCK INDICATOR (NO TOGGLE PERMITTED) */}
@@ -495,17 +510,51 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
             </div>
           </div>
         </aside>
+        )}
 
         {/* Panel 2: Center Main Content (Static Header, Scrollable View) */}
         <main className="pbd-main-content">
           <header className="pbd-content-header">
-            <div>
-              <h1 className="pbd-page-heading">
-                {BRANCH_NAV_ITEMS.find(n => n.key === activeSection)?.label || 'Branch Console'}
-              </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              {!sidebarOpen && (
+                <button
+                  type="button"
+                  className="pbd-sidebar-reveal-btn"
+                  onClick={() => setSidebarOpen(true)}
+                  title="Reveal sidebar"
+                  aria-label="Reveal sidebar"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+                    <path d="M9 3v18"/>
+                    <path d="m14 9 3 3-3 3"/>
+                  </svg>
+                  <span>Reveal Sidebar</span>
+                </button>
+              )}
+              {sidebarOpen && (
+                <button
+                  type="button"
+                  className="pbd-sidebar-toggle-ghost-btn"
+                  onClick={() => setSidebarOpen(false)}
+                  title="Hide sidebar"
+                  aria-label="Hide sidebar"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+                    <path d="M9 3v18"/>
+                    <path d="m16 15-3-3 3-3"/>
+                  </svg>
+                </button>
+              )}
+              <div>
+                <h1 className="pbd-page-heading">
+                  {BRANCH_NAV_ITEMS.find(n => n.key === activeSection)?.label || 'Branch Console'}
+                </h1>
               <span className="muted small">
                 {currentBranch.name} · {currentBranch.address}
               </span>
+            </div>
             </div>
 
             <div className="pbd-header-right">

@@ -58,6 +58,31 @@ export function AppProvider({ children }) {
   const [paystackEnabled, setPaystackEnabled] = useState(false)
   const [staff, setStaff] = useState([])
 
+  const defaultSettings = {
+    businessName: "Lady 3D's Catering Services",
+    cugWhatsapp: "053 129 9243",
+    sunyaniWhatsapp: "053 129 9243",
+    cateringPhone: "024 465 0474",
+    generalPhone: "027 691 3089",
+    hours: "Mon - Sat: 8:00 AM - 9:00 PM | Sun: 12:00 PM - 8:00 PM",
+    currency: "GH₵",
+    cugAddress: "Fiapre Campus, Catholic University of Ghana, Sunyani",
+    sunyaniAddress: "Market Circle / Main Road, Sunyani",
+    supportEmail: "info@lady3d.com",
+    orderNotificationSound: true
+  }
+
+  const [settings, setSettingsState] = useState(defaultSettings)
+
+  const setSettings = async newSettings => {
+    setSettingsState(newSettings)
+    try {
+      await api('/admin/state/settings', { method: 'PUT', body: JSON.stringify({ value: newSettings }) })
+    } catch (err) {
+      console.warn('Could not persist settings:', err.message)
+    }
+  }
+
   const [branchStatus, setBranchStatus] = useState({
     cug: { open: true, notice: 'Campus Annex open 7am-8pm', supervisor: 'Mrs. Cynthia Boakye' },
     sunyani: { open: true, notice: 'Town branch open daily', supervisor: 'Mr. Ernest Kwaku' }
@@ -115,6 +140,7 @@ export function AppProvider({ children }) {
           if (state.menu) setMenu(state.menu)
           if (state.cats) setCats(state.cats)
           if (state.loyaltyRules) setLoyaltyRulesState(state.loyaltyRules)
+          if (state.settings) setSettingsState(prev => ({ ...prev, ...state.settings }))
         }
       } catch {
         /* Anonymous visitor */
@@ -147,6 +173,12 @@ export function AppProvider({ children }) {
     }
     api('/my/orders').then(({ orders: mine }) => setOrders(mine || [])).catch(() => {})
     say(`Welcome back, ${userData.name}!`)
+  }
+
+  const updateProfile = async profile => {
+    const { user: updated } = await api('/auth/profile', { method: 'PUT', body: JSON.stringify(profile) })
+    setUser(updated)
+    return updated
   }
 
   const logoutUser = () => {
@@ -372,6 +404,7 @@ export function AppProvider({ children }) {
     }
     if (state.menu) setMenu(state.menu)
     if (state.cats) setCats(state.cats)
+    if (state.settings) setSettingsState(prev => ({ ...prev, ...state.settings }))
     return session
   }
 
@@ -397,7 +430,7 @@ export function AppProvider({ children }) {
     price, ok,
     place, orders, setOrders,
     branchStatus, setBranchStatus,
-    user, setUser, loginUser, logoutUser, claimGuestOrders,
+    user, setUser, loginUser, logoutUser, updateProfile, claimGuestOrders,
     favs, setFavs, toggleFav,
     points, setPoints,
     reviews, setReviews,
@@ -410,7 +443,8 @@ export function AppProvider({ children }) {
     activeFood, setActiveFood,
     deviceFrame, setDeviceFrame,
     staffUser, staffLogin, staffLogout, authReady, api, paystackEnabled,
-    setStatus, markPaid, staff, setStaff
+    setStatus, markPaid, staff, setStaff,
+    settings, setSettings
   }
 
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>
