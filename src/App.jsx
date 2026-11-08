@@ -20,7 +20,7 @@ function StaffLoginPage() {
       const session = await staffLogin(email, password)
       if (session.role === 'Kitchen') go('/kitchen')
       else if (session.role === 'Driver') go('/delivery')
-      else if (session.role === 'Cashier') go('/branch/' + (session.assignedBranch === 'sunyani' ? 'sunyani' : 'cug'))
+      else if (session.role === 'Cashier') go('/branch/' + (session.assignedBranch === 'sunyani' ? 'sunyani' : 'cug') + '/pos')
       else go('/admin/overview')
     }
     catch (error) { say(error.message) }
@@ -93,14 +93,14 @@ export default function App() {
   if (seg[0] === 'branch') {
     if (!authReady) return <div className="wrap sec">Checking staff session…</div>
     if (!staffUser) return <><StaffLoginPage />{toast && <div className="toast-pill">{toast}</div>}</>
-    if (!['Owner', 'Manager'].includes(staffUser.role)) return <div className="wrap sec"><h1>Branch access restricted</h1><p>Your staff role cannot manage branch settings.</p></div>
+    if (!['Owner', 'Manager', 'Cashier'].includes(staffUser.role)) return <div className="wrap sec"><h1>Branch access restricted</h1><p>Your staff role cannot access branch operations.</p></div>
     const branchTarget = seg[1] === 'sunyani' ? 'sunyani' : 'cug'
     if (staffUser.assignedBranch && staffUser.assignedBranch !== 'all' && staffUser.assignedBranch !== branchTarget) {
       return <div className="wrap sec"><h1>Branch access restricted</h1><p>Your staff account is assigned to another branch.</p></div>
     }
     return (
       <>
-        <BranchDashboard branchId={branchTarget} section={seg[2] || 'overview'} />
+        <BranchDashboard branchId={branchTarget} section={seg[2] || (staffUser.role === 'Cashier' ? 'pos' : 'overview')} />
         {toast && <div className="toast-pill">{toast}</div>}
       </>
     )

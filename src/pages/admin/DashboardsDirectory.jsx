@@ -138,38 +138,6 @@ export default function DashboardsDirectory() {
           </div>
         ))}
       </div>
-
-      {/* Demo Credentials Box */}
-      <div style={{ marginTop: '40px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '24px' }}>
-        <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 10px 0', color: '#1e293b' }}>
-          💡 Staff Login & Testing Credentials
-        </h3>
-        <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 14px 0' }}>
-          You can sign in directly at <Link to="/staff-login" style={{ color: '#dc2626', fontWeight: 700 }}>/#/staff-login</Link> using your owner credentials or these seeded test accounts:
-        </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', fontSize: '13px' }}>
-          <div style={{ background: '#fff', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-            <b style={{ color: '#0284c7' }}>Branch Manager (CUG):</b><br />
-            Email: <code>manager.cug@lady3d.local</code><br />
-            Pass: <code>StaffPass123!</code>
-          </div>
-          <div style={{ background: '#fff', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-            <b style={{ color: '#10b981' }}>Kitchen Staff (CUG):</b><br />
-            Email: <code>kitchen.cug@lady3d.local</code><br />
-            Pass: <code>StaffPass123!</code>
-          </div>
-          <div style={{ background: '#fff', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-            <b style={{ color: '#6366f1' }}>Dispatch Rider (CUG):</b><br />
-            Email: <code>driver.cug@lady3d.local</code><br />
-            Pass: <code>StaffPass123!</code>
-          </div>
-          <div style={{ background: '#fff', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-            <b style={{ color: '#d97706' }}>Branch Manager (Sunyani):</b><br />
-            Email: <code>manager.sunyani@lady3d.local</code><br />
-            Pass: <code>StaffPass123!</code>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

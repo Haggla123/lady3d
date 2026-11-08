@@ -3,8 +3,10 @@ import { api } from '../../services/api/client.js'
 import { money } from '../../utils/money.js'
 import { DELIVERY_STATUS_MAP, ORDER_STATUS_MAP, BRANCHES } from '../../data.js'
 import { Link } from '../../components/ui.jsx'
+import { useApp, go } from '../../store.jsx'
 
 export default function DeliveryDashboard({ branchId: initialBranch = 'all', staffUser }) {
+  const { staffLogout, say } = useApp()
   const [selectedBranch, setSelectedBranch] = useState(initialBranch)
   const [orders, setOrders] = useState([])
   const [zones, setZones] = useState([])
@@ -166,9 +168,18 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all', sta
             </button>
           </div>}
 
+          <Link to="/dashboards" style={{ color: '#cbd5e1', textDecoration: 'none', background: '#1e293b', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 600 }}>
+            💼 Portals Directory
+          </Link>
           {canManage && <Link to="/admin/overview" style={{ color: '#cbd5e1', textDecoration: 'none', background: '#1e293b', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 600 }}>
             ← Admin Console
           </Link>}
+          <button
+            onClick={() => staffLogout ? staffLogout().then(() => { if (say) say('Signed out'); go('/staff-login') }) : go('/staff-login')}
+            style={{ color: '#fca5a5', background: '#1e293b', border: '1px solid #334155', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+          >
+            Sign Out
+          </button>
         </div>
       </header>
 

@@ -1183,6 +1183,36 @@ app.use((err, _req, res, _next) => {
 
 const port = Number(process.env.PORT || 4000)
 await mongoose.connect(process.env.MONGODB_URI)
+
+// Outside local development, verify and purge any retained demo staff accounts
+const isLocalDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV
+if (!isLocalDev) {
+  const demoStaffEmails = [
+    'manager.cug@lady3d.local',
+    'kitchen.cug@lady3d.local',
+    'driver.cug@lady3d.local',
+    'manager.sunyani@lady3d.local',
+    'kitchen.sunyani@lady3d.local',
+    'driver.sunyani@lady3d.local'
+  ]
+  const removed = await User.deleteMany({ email: { $in: demoStaffEmails } })
+  if (removed.deletedCount > 0) {
+    console.log(`Purged ${removed.deletedCount} demo staff accounts retained outside local development`)
+  }
+}
+
+// Rotate any active accounts using known seeded/compromised passwords
+const activeUsers = await User.find({})
+for (const u of activeUsers) {
+  if (u.passwordHash && await bcrypt.compare('StaffPass123!', u.passwordHash)) {
+    const rotated = randomBytes(24).toString('base64url')
+    u.passwordHash = await bcrypt.hash(rotated, 12)
+    u.active = false
+    await u.save()
+    console.log(`Rotated compromised seeded password for account: ${u.email}`)
+  }
+}
+
 for (const branchId of ['cug', 'sunyani']) {
   const currentActiveOrders = await Order.countDocuments({ branch: branchId, orderStatus: { $in: capacityOrderStatuses } })
   await Branch.updateOne({ id: branchId }, { $set: { currentActiveOrders } })

@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import mongoose from 'mongoose'
 import bcrypt from 'bcryptjs'
+import { randomBytes } from 'node:crypto'
 import { MENU, BRANCHES, PROMO_CODES, REVIEWS } from '../src/data.js'
 import { AppState, Branch, MenuItem, Promo, Review, User, DeliveryZone, DailyAvailability } from './models.js'
 
@@ -133,36 +134,65 @@ if (process.env.SEED_OWNER_EMAIL && process.env.SEED_OWNER_PASSWORD) {
   )
   console.log(`Ensured owner login for ${email}`)
 
-  // Seed standard operational staff for demonstration if requested
-  const demoStaff = [
-    { email: 'manager.cug@lady3d.local', name: 'CUG Branch Manager', role: 'Manager', branch: 'cug', phone: '0531299243' },
-    { email: 'kitchen.cug@lady3d.local', name: 'Fiapre Chef / Kitchen', role: 'Kitchen', branch: 'cug', phone: '0244650474' },
-    { email: 'driver.cug@lady3d.local', name: 'Campus Dispatch Rider 1', role: 'Driver', branch: 'cug', phone: '0551122334' },
-    { email: 'manager.sunyani@lady3d.local', name: 'Sunyani Main Manager', role: 'Manager', branch: 'sunyani', phone: '0276913089' },
-    { email: 'kitchen.sunyani@lady3d.local', name: 'Main Kitchen Team', role: 'Kitchen', branch: 'sunyani', phone: '0244650474' },
-    { email: 'driver.sunyani@lady3d.local', name: 'Town Dispatch Rider 1', role: 'Driver', branch: 'sunyani', phone: '0209988776' }
+  const demoStaffEmails = [
+    'manager.cug@lady3d.local',
+    'kitchen.cug@lady3d.local',
+    'driver.cug@lady3d.local',
+    'manager.sunyani@lady3d.local',
+    'kitchen.sunyani@lady3d.local',
+    'driver.sunyani@lady3d.local'
   ]
 
-  for (const s of demoStaff) {
-    await User.updateOne(
-      { email: s.email },
-      {
-        $setOnInsert: {
-          name: s.name,
-          email: s.email,
-          phone: s.phone,
-          role: s.role,
-          assignedBranch: s.branch,
-          active: true,
-          passwordHash: await bcrypt.hash('StaffPass123!', 12)
-        }
-      },
-      { upsert: true }
-    )
+  const isLocalDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV
+  if (isLocalDev && process.env.SEED_DEMO_STAFF === 'true') {
+    const demoStaff = [
+      { email: 'manager.cug@lady3d.local', name: 'CUG Branch Manager', role: 'Manager', branch: 'cug', phone: '0531299243' },
+      { email: 'kitchen.cug@lady3d.local', name: 'Fiapre Chef / Kitchen', role: 'Kitchen', branch: 'cug', phone: '0244650474' },
+      { email: 'driver.cug@lady3d.local', name: 'Campus Dispatch Rider 1', role: 'Driver', branch: 'cug', phone: '0551122334' },
+      { email: 'manager.sunyani@lady3d.local', name: 'Sunyani Main Manager', role: 'Manager', branch: 'sunyani', phone: '0276913089' },
+      { email: 'kitchen.sunyani@lady3d.local', name: 'Main Kitchen Team', role: 'Kitchen', branch: 'sunyani', phone: '0244650474' },
+      { email: 'driver.sunyani@lady3d.local', name: 'Town Dispatch Rider 1', role: 'Driver', branch: 'sunyani', phone: '0209988776' }
+    ]
+
+    for (const s of demoStaff) {
+      const staffPassword = process.env.SEED_DEMO_STAFF_PASSWORD || randomBytes(16).toString('base64url')
+      await User.updateOne(
+        { email: s.email },
+        {
+          $setOnInsert: {
+            name: s.name,
+            email: s.email,
+            phone: s.phone,
+            role: s.role,
+            assignedBranch: s.branch,
+            active: true,
+            passwordHash: await bcrypt.hash(staffPassword, 12)
+          }
+        },
+        { upsert: true }
+      )
+    }
+    console.log('Ensured role accounts (Manager, Kitchen, Driver) for local testing')
+  } else {
+    const removed = await User.deleteMany({ email: { $in: demoStaffEmails } })
+    if (removed.deletedCount > 0) {
+      console.log(`Purged ${removed.deletedCount} demo staff accounts retained outside local development`)
+    }
   }
-  console.log('Ensured role accounts (Manager, Kitchen, Driver) for testing')
 } else {
   console.log('Set SEED_OWNER_EMAIL and SEED_OWNER_PASSWORD to seed staff credentials.')
+}
+
+// 9. Rotate any active accounts using known seeded/compromised passwords
+const existingUsers = await User.find({})
+for (const u of existingUsers) {
+  if (u.passwordHash && await bcrypt.compare('StaffPass123!', u.passwordHash)) {
+    const rotated = randomBytes(24).toString('base64url')
+    u.passwordHash = await bcrypt.hash(rotated, 12)
+    u.active = false
+    await u.save()
+    console.log(`Rotated compromised seeded password for account: ${u.email}`)
+  }
 }
 
 await mongoose.disconnect()
