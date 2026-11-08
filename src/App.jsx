@@ -15,9 +15,12 @@ function StaffLoginPage() {
   const [busy, setBusy] = useState(false)
   const signIn = async event => {
     event.preventDefault()
+    const cleanIdentifier = email.trim()
+    if (!cleanIdentifier) return say('Please enter your email or username')
+    if (!password) return say('Please enter your password')
     setBusy(true)
     try {
-      const session = await staffLogin(email, password)
+      const session = await staffLogin(cleanIdentifier, password)
       if (session.role === 'Kitchen') go('/kitchen')
       else if (session.role === 'Driver') go('/delivery')
       else if (session.role === 'Cashier') go('/branch/' + (session.assignedBranch === 'sunyani' ? 'sunyani' : 'cug') + '/pos')
@@ -27,7 +30,42 @@ function StaffLoginPage() {
     catch (error) { say(error.message) }
     finally { setBusy(false) }
   }
-  return <div className="auth-modern-screen"><div className="auth-card-container"><h1 className="auth-title">Staff sign in</h1><p className="auth-subtitle">Use your staff account to open the operations dashboard.</p><form className="auth-form-fields" onSubmit={signIn}><label className="input-field-wrap"><span>Email address</span><input type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} /></label><label className="input-field-wrap"><span>Password</span><input type="password" autoComplete="current-password" required value={password} onChange={e => setPassword(e.target.value)} /></label><button className="btn-auth-submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button></form></div></div>
+  return (
+    <div className="auth-modern-screen">
+      <div className="auth-card-container">
+        <h1 className="auth-title">Staff sign in</h1>
+        <p className="auth-subtitle">Use your staff account or admin credentials to sign in.</p>
+        <form className="auth-form-fields" onSubmit={signIn}>
+          <label className="input-field-wrap">
+            <span>Email or username</span>
+            <input
+              type="text"
+              inputMode="email"
+              autoComplete="username"
+              placeholder="e.g. owner@lady3d.local or admin"
+              required
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+            />
+          </label>
+          <label className="input-field-wrap">
+            <span>Password</span>
+            <input
+              type="password"
+              autoComplete="current-password"
+              placeholder="Your password"
+              required
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+            />
+          </label>
+          <button className="btn-auth-submit" disabled={busy}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
 }
 
 export default function App() {

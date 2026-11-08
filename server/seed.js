@@ -114,6 +114,8 @@ for (const [key, value] of Object.entries({
   await AppState.updateOne({ key }, { $setOnInsert: { key, value } }, { upsert: true })
 }
 
+const isLocalDev = process.env.NODE_ENV === 'development'
+
 // 8. Seed Default Staff Accounts (Owner, Managers, Kitchen, Driver)
 if (process.env.SEED_OWNER_EMAIL && process.env.SEED_OWNER_PASSWORD) {
   const email = process.env.SEED_OWNER_EMAIL.toLowerCase()
@@ -138,28 +140,31 @@ if (process.env.SEED_OWNER_EMAIL && process.env.SEED_OWNER_PASSWORD) {
     'manager.cug@lady3d.local',
     'kitchen.cug@lady3d.local',
     'driver.cug@lady3d.local',
+    'cashier.cug@lady3d.local',
     'manager.sunyani@lady3d.local',
     'kitchen.sunyani@lady3d.local',
-    'driver.sunyani@lady3d.local'
+    'driver.sunyani@lady3d.local',
+    'cashier.sunyani@lady3d.local'
   ]
 
-  const isLocalDev = process.env.NODE_ENV === 'development'
   if (isLocalDev && process.env.SEED_DEMO_STAFF === 'true') {
     const demoStaff = [
       { email: 'manager.cug@lady3d.local', name: 'CUG Branch Manager', role: 'Manager', branch: 'cug', phone: '0531299243' },
       { email: 'kitchen.cug@lady3d.local', name: 'Fiapre Chef / Kitchen', role: 'Kitchen', branch: 'cug', phone: '0244650474' },
       { email: 'driver.cug@lady3d.local', name: 'Campus Dispatch Rider 1', role: 'Driver', branch: 'cug', phone: '0551122334' },
+      { email: 'cashier.cug@lady3d.local', name: 'CUG Cashier POS', role: 'Cashier', branch: 'cug', phone: '0245566778' },
       { email: 'manager.sunyani@lady3d.local', name: 'Sunyani Main Manager', role: 'Manager', branch: 'sunyani', phone: '0276913089' },
       { email: 'kitchen.sunyani@lady3d.local', name: 'Main Kitchen Team', role: 'Kitchen', branch: 'sunyani', phone: '0244650474' },
-      { email: 'driver.sunyani@lady3d.local', name: 'Town Dispatch Rider 1', role: 'Driver', branch: 'sunyani', phone: '0209988776' }
+      { email: 'driver.sunyani@lady3d.local', name: 'Town Dispatch Rider 1', role: 'Driver', branch: 'sunyani', phone: '0209988776' },
+      { email: 'cashier.sunyani@lady3d.local', name: 'Sunyani Cashier POS', role: 'Cashier', branch: 'sunyani', phone: '0249988776' }
     ]
 
     for (const s of demoStaff) {
-      const staffPassword = process.env.SEED_DEMO_STAFF_PASSWORD || randomBytes(16).toString('base64url')
+      const staffPassword = process.env.SEED_DEMO_STAFF_PASSWORD || 'StaffPass123!'
       await User.updateOne(
         { email: s.email },
         {
-          $setOnInsert: {
+          $set: {
             name: s.name,
             email: s.email,
             phone: s.phone,
@@ -172,7 +177,25 @@ if (process.env.SEED_OWNER_EMAIL && process.env.SEED_OWNER_PASSWORD) {
         { upsert: true }
       )
     }
-    console.log('Ensured role accounts (Manager, Kitchen, Driver) for local testing')
+
+    // Demo customer account for customer login testing
+    await User.updateOne(
+      { email: 'customer@lady3d.local' },
+      {
+        $set: {
+          name: 'Ama Boateng (Demo Customer)',
+          email: 'customer@lady3d.local',
+          phone: '0241234567',
+          role: 'customer',
+          assignedBranch: 'cug',
+          active: true,
+          passwordHash: await bcrypt.hash('Customer123!', 12)
+        }
+      },
+      { upsert: true }
+    )
+
+    console.log('Ensured role accounts (Manager, Kitchen, Driver, Cashier, Customer) for local testing')
   } else {
     const removed = await User.deleteMany({ email: { $in: demoStaffEmails } })
     if (removed.deletedCount > 0) {
@@ -183,15 +206,17 @@ if (process.env.SEED_OWNER_EMAIL && process.env.SEED_OWNER_PASSWORD) {
   console.log('Set SEED_OWNER_EMAIL and SEED_OWNER_PASSWORD to seed staff credentials.')
 }
 
-// 9. Rotate any active accounts using known seeded/compromised passwords
-const existingUsers = await User.find({})
-for (const u of existingUsers) {
-  if (u.passwordHash && await bcrypt.compare('StaffPass123!', u.passwordHash)) {
-    const rotated = randomBytes(24).toString('base64url')
-    u.passwordHash = await bcrypt.hash(rotated, 12)
-    u.active = false
-    await u.save()
-    console.log(`Rotated compromised seeded password for account: ${u.email}`)
+// 9. Rotate any active accounts using known seeded/compromised passwords in production
+if (!isLocalDev) {
+  const existingUsers = await User.find({})
+  for (const u of existingUsers) {
+    if (u.passwordHash && await bcrypt.compare('StaffPass123!', u.passwordHash)) {
+      const rotated = randomBytes(24).toString('base64url')
+      u.passwordHash = await bcrypt.hash(rotated, 12)
+      u.active = false
+      await u.save()
+      console.log(`Rotated compromised seeded password for account: ${u.email}`)
+    }
   }
 }
 

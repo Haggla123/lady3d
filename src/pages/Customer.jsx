@@ -1510,12 +1510,13 @@ export function SignIn() {
 
         <form onSubmit={handleSignIn} className="auth-form-fields">
           <label className="input-field-wrap">
-            <span>Email Address</span>
+            <span>Email Address or Username</span>
             <input
-              type="email"
+              type="text"
+              inputMode="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="e.g. name@cug.edu.gh or gmail.com"
+              placeholder="e.g. name@cug.edu.gh or admin"
               required
             />
           </label>

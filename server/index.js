@@ -75,9 +75,18 @@ const publicUser = user => ({
   welcomeVoucherUsed: Boolean(user.welcomeVoucherUsedAt)
 })
 const authBody = z.object({
-  email: z.string().trim().email('Enter a valid email address').max(254),
+  email: z.string().trim().min(2, 'Enter your email address or username').max(254),
   password: z.string().min(1, 'Password is required').max(128)
 })
+
+const lookupUserByLogin = async (identifier) => {
+  const clean = (identifier || '').trim().toLowerCase()
+  if (clean === 'admin' || clean === 'admin@lady3d.local' || clean === 'admin@lady3d.com') {
+    const owner = await User.findOne({ role: 'Owner' })
+    if (owner) return owner
+  }
+  return await User.findOne({ email: clean })
+}
 
 const getTodayString = () => new Date().toISOString().slice(0, 10)
 const capacityOrderStatuses = ['pending_payment', 'confirmed', 'preparing', 'ready_for_collection', 'ready_for_dispatch', 'out_for_delivery']
@@ -266,7 +275,7 @@ app.post('/api/auth/signup', asyncRoute(async (req, res) => {
 
 app.post('/api/auth/login', asyncRoute(async (req, res) => {
   const { email, password } = authBody.parse(req.body)
-  const user = await User.findOne({ email: email.toLowerCase() })
+  const user = await lookupUserByLogin(email)
   if (!user || user.active === false || !(await bcrypt.compare(password, user.passwordHash))) {
     return res.status(401).json({ error: 'Email or password is incorrect' })
   }
@@ -276,8 +285,8 @@ app.post('/api/auth/login', asyncRoute(async (req, res) => {
 
 app.post('/api/auth/staff-login', asyncRoute(async (req, res) => {
   const { email, password } = authBody.parse(req.body)
-  const user = await User.findOne({ email: email.toLowerCase(), role: { $ne: 'customer' } })
-  if (!user || user.active === false || !(await bcrypt.compare(password, user.passwordHash))) {
+  const user = await lookupUserByLogin(email)
+  if (!user || user.role === 'customer' || user.active === false || !(await bcrypt.compare(password, user.passwordHash))) {
     return res.status(401).json({ error: 'Email or password is incorrect' })
   }
   issueSession(res, user)
@@ -1326,25 +1335,27 @@ if (!isLocalDev) {
     'manager.cug@lady3d.local',
     'kitchen.cug@lady3d.local',
     'driver.cug@lady3d.local',
+    'cashier.cug@lady3d.local',
     'manager.sunyani@lady3d.local',
     'kitchen.sunyani@lady3d.local',
-    'driver.sunyani@lady3d.local'
+    'driver.sunyani@lady3d.local',
+    'cashier.sunyani@lady3d.local'
   ]
   const removed = await User.deleteMany({ email: { $in: demoStaffEmails } })
   if (removed.deletedCount > 0) {
     console.log(`Purged ${removed.deletedCount} demo staff accounts retained outside local development`)
   }
-}
 
-// Rotate any active accounts using known seeded/compromised passwords
-const activeUsers = await User.find({})
-for (const u of activeUsers) {
-  if (u.passwordHash && await bcrypt.compare('StaffPass123!', u.passwordHash)) {
-    const rotated = randomBytes(24).toString('base64url')
-    u.passwordHash = await bcrypt.hash(rotated, 12)
-    u.active = false
-    await u.save()
-    console.log(`Rotated compromised seeded password for account: ${u.email}`)
+  // Rotate any active accounts using known seeded/compromised passwords in production
+  const activeUsers = await User.find({})
+  for (const u of activeUsers) {
+    if (u.passwordHash && await bcrypt.compare('StaffPass123!', u.passwordHash)) {
+      const rotated = randomBytes(24).toString('base64url')
+      u.passwordHash = await bcrypt.hash(rotated, 12)
+      u.active = false
+      await u.save()
+      console.log(`Rotated compromised seeded password for account: ${u.email}`)
+    }
   }
 }
 
