@@ -463,28 +463,13 @@ export default function KitchenDashboard({ branchId: propBranch = 'cug', staffUs
               </div>
             )}
 
-            {/* Refresh Action */}
-            <button
-              onClick={() => loadData(true)}
-              title="Refresh queue and stock"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: '#FFFFFF',
-                color: '#44403C',
-                border: '1px solid #EFE6DC',
-                padding: '8px 12px',
-                borderRadius: '8px',
-                fontWeight: 600,
-                fontSize: '13px',
-                cursor: 'pointer',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
-              }}
-            >
-              <IconRefresh size={15} color="#44403C" spin={refreshing} />
-              <span>Refresh</span>
-            </button>
+            {/* Live syncing status indicator */}
+            {refreshing && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#80141B', fontSize: '12px', fontWeight: 700, padding: '6px 12px', background: '#FDF2F2', border: '1px solid #FECACA', borderRadius: '8px' }}>
+                <span className="pbd-spinner-sm" style={{ width: 14, height: 14 }} />
+                <span>Syncing queue...</span>
+              </div>
+            )}
 
             {/* Audio Chime Toggle */}
             <button

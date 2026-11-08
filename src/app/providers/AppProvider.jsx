@@ -87,7 +87,9 @@ export function AppProvider({ children }) {
   const [points, setPoints] = useState(0)
   const [reviews, setReviews] = useState(REVIEWS)
   const [votes, setVotes] = useState({ 'Waakye Special': 41, 'Jollof & Chicken': 37, 'Fufu & Light Soup': 18 })
-  const [voted, setVoted] = useState(() => typeof window === 'undefined' ? null : window.localStorage.getItem(getWeeklyVoteKey()))
+  const [voted, setVoted] = useState(() => {
+    try { return typeof window === 'undefined' ? null : window.localStorage.getItem(getWeeklyVoteKey()) } catch { return null }
+  })
   const [toast, setToast] = useState('')
   const [promos, setPromos] = useState([
     ...Object.values(PROMO_CODES).map(promo => ({ ...promo, label: promo.label, bannerText: promo.label, enabled: true, on: true }))
@@ -110,6 +112,15 @@ export function AppProvider({ children }) {
 
   const refreshAllData = async () => {
     try {
+      const bootstrap = await api('/public/bootstrap')
+      if (bootstrap.menu?.length) setMenu(bootstrap.menu)
+      if (bootstrap.reviews) setReviews(bootstrap.reviews)
+      if (bootstrap.votes) setVotes(bootstrap.votes)
+      if (Array.isArray(bootstrap.promos)) setPromos(bootstrap.promos)
+      if (bootstrap.loyaltyRules) setLoyaltyRulesState(bootstrap.loyaltyRules)
+      if (bootstrap.deliveryZones?.length) setDeliveryZones(bootstrap.deliveryZones)
+      if (bootstrap.dailyStock?.length) setDailyStock(bootstrap.dailyStock)
+      if (bootstrap.branches?.length) setBranchStatus(Object.fromEntries(bootstrap.branches.map(b => [b.id, b])))
       if (staffUser && staffUser.role !== 'customer') {
         const [{ orders: currentOrders }, { state }] = await Promise.all([
           api('/admin/orders').catch(() => ({ orders: [] })),
@@ -205,7 +216,7 @@ export function AppProvider({ children }) {
     const { votes: updated } = await api('/votes', { method: 'POST', body: JSON.stringify({ option }) })
     setVotes(updated)
     setVoted(option)
-    if (typeof window !== 'undefined') window.localStorage.setItem(getWeeklyVoteKey(), option)
+    try { if (typeof window !== 'undefined') window.localStorage.setItem(getWeeklyVoteKey(), option) } catch { /* Server vote is already accepted. */ }
     return updated
   }
 
@@ -269,16 +280,16 @@ export function AppProvider({ children }) {
                     lower.includes('please ')
     const isBasket = lower.includes('basket') || lower.includes('cart')
     
-    const computedType = explicitType || (isBasket ? 'basket' : isError ? 'error' : 'success')
-    const computedTitle = explicitTitle || (isBasket ? 'Added to Basket' : isError ? 'Error' : 'Success')
+    const computedType = explicitType || (isError ? 'error' : isBasket ? 'basket' : 'success')
+    const computedTitle = explicitTitle || (isError ? 'Error' : isBasket ? 'Added to Basket' : 'Success')
 
     const payload = {
       id: Date.now() + Math.random(),
       title: computedTitle,
       message: rawMessage,
       type: computedType,
-      actionLabel: actionLabel || (isBasket ? 'View Basket' : ''),
-      actionPath: actionPath || (isBasket ? '/cart' : '')
+      actionLabel: actionLabel || (computedType === 'basket' ? 'View Basket' : ''),
+      actionPath: actionPath || (computedType === 'basket' ? '/cart' : '')
     }
 
     setToast(payload)

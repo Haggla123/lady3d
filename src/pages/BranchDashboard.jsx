@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { api, money, useApp, go } from '../store.jsx'
-import { Link, RefreshButton, LoadingSpinner } from '../components/ui.jsx'
+import { Link, LoadingSpinner } from '../components/ui.jsx'
 import { BRANCHES, STATUSES, EXTRAS, buildOrderWhatsAppUrl } from '../data.js'
 import { playKitchenChime } from './Admin.jsx'
 
@@ -560,7 +560,11 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
             </div>
 
             <div className="pbd-header-right">
-              <RefreshButton onClick={refreshAllData} loading={isNetworkBusy} title="Refresh console data" />
+              {isNetworkBusy && (
+                <div style={{ display: 'flex', alignItems: 'center', marginRight: '6px' }} title="Syncing console data...">
+                  <span className="pbd-spinner-sm" style={{ width: 16, height: 16 }} />
+                </div>
+              )}
               {/* Branch Locked Indicator Pill */}
               <div className="branch-header-lock-tag">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">

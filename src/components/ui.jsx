@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Component } from 'react'
 import { money, useApp, go } from '../store.jsx'
 import { BRANCHES, EXTRAS } from '../data.js'
 
@@ -556,21 +556,11 @@ export function MobileTopNav({ activePath = '/' }) {
         )}
 
         <div className="mobile-header-right-slot">
-          <button
-            type="button"
-            className="mobile-action-circle mobile-refresh-action"
-            onClick={async () => {
-              say('Refreshing live data...')
-              await refreshAllData()
-            }}
-            disabled={isNetworkBusy}
-            title="Refresh latest menu and orders"
-            aria-label="Refresh"
-          >
-            <svg className={`pbd-refresh-icon ${isNetworkBusy ? 'spinning' : ''}`} viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-            </svg>
-          </button>
+          {isNetworkBusy && (
+            <div style={{ display: 'flex', alignItems: 'center', marginRight: '4px' }} title="Syncing data...">
+              <span className="pbd-spinner-sm" style={{ width: 16, height: 16 }} />
+            </div>
+          )}
           <Link to="/community" className="mobile-action-circle" title="Community & Reviews" aria-label="Community">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -670,9 +660,15 @@ export function GlobalNetworkBar() {
   const { isNetworkBusy } = useApp()
   if (!isNetworkBusy) return null
   return (
-    <div className="global-network-loader-bar" role="progressbar" aria-label="Loading data" aria-busy="true">
-      <div className="global-network-loader-pulse" />
-    </div>
+    <>
+      <div className="global-network-loader-bar" role="progressbar" aria-label="Loading data" aria-busy="true">
+        <div className="global-network-loader-pulse" />
+      </div>
+      <div className="global-sync-spinner-pill" role="status" aria-live="polite">
+        <span className="pbd-spinner-sm" />
+        <span>Loading...</span>
+      </div>
+    </>
   )
 }
 
@@ -695,20 +691,53 @@ export function LoadingSpinner({ size = 'md', text = '', color = 'red', inline =
   )
 }
 
-export function RefreshButton({ onClick, loading, label = 'Refresh', title = 'Refresh data', className = '', variant = 'default' }) {
-  return (
-    <button
-      type="button"
-      className={`pbd-refresh-btn ${className}`}
-      onClick={onClick}
-      disabled={loading}
-      title={title}
-      aria-label={title}
-    >
-      <svg className={`pbd-refresh-icon ${loading ? 'spinning' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-      </svg>
-      <span>{loading ? 'Refreshing...' : label}</span>
-    </button>
-  )
+export class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('ErrorBoundary caught an error:', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="cart-empty-screen" style={{ padding: '40px 20px', textAlign: 'center' }}>
+          <h2>Something went wrong</h2>
+          <p style={{ color: '#64748b', margin: '12px auto 24px', maxWidth: '420px' }}>
+            We encountered an unexpected error displaying this section. Please try again or return to the menu.
+          </p>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+            <button
+              type="button"
+              className="btn-order-cta"
+              style={{ width: 'auto', padding: '10px 20px' }}
+              onClick={() => {
+                this.setState({ hasError: false, error: null })
+                window.location.reload()
+              }}
+            >
+              Reload Page
+            </button>
+            <Link
+              to="/menu"
+              className="btn-back-step"
+              style={{ display: 'inline-flex', alignItems: 'center' }}
+            >
+              Browse Menu
+            </Link>
+          </div>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
 }
+

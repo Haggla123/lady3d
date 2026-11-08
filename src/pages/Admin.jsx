@@ -150,8 +150,7 @@ function DonutChart({ data, total }) {
 
 // 1. Overview Dashboard
 function Overview() {
-  const { orders, say, refreshAllData } = useApp()
-  const [refreshing, setRefreshing] = useState(false)
+  const { orders, say } = useApp()
   const act = orders.filter(o => o.status < 4)
   const cooking = orders.filter(o => o.status === 2)
   const ready = orders.filter(o => o.status === 3)
@@ -189,18 +188,6 @@ function Overview() {
               }}
             >
               Test Kitchen Chime
-            </button>
-            <button
-              className="pbd-btn-hero-white"
-              onClick={async () => {
-                setRefreshing(true)
-                say('Refreshing platform metrics...')
-                await refreshAllData()
-                setRefreshing(false)
-              }}
-              disabled={refreshing}
-            >
-              {refreshing ? 'Refreshing...' : 'Refresh Metrics'}
             </button>
           </div>
         </div>
@@ -326,7 +313,6 @@ function Orders() {
   const [searchVal, setSearchVal] = useState('')
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [advancingRef, setAdvancingRef] = useState(null)
-  const [refreshingOrders, setRefreshingOrders] = useState(false)
   const prevOrdersCount = useRef(orders.length)
 
   useEffect(() => {
@@ -339,17 +325,31 @@ function Orders() {
     prevOrdersCount.current = orders.length
   }, [orders.length, soundEnabled, say])
 
+  const orderStep = order => {
+    if (Number.isInteger(order.status)) return order.status
+    const statusSteps = {
+      pending_payment: 0,
+      confirmed: 1,
+      preparing: 2,
+      ready_for_collection: 3,
+      ready_for_dispatch: 3,
+      out_for_delivery: 3,
+      delivered: 4,
+      collected: 4,
+      cancelled: 4,
+      rejected: 4
+    }
+    return statusSteps[order.orderStatus] ?? 0
+  }
+
   const branchFiltered = orders.filter(o => branchFilter === 'all' || o.branch === branchFilter)
   const displayedOrders = branchFiltered.filter(o => {
-    let matchesStatus = true
-    if (statusFilter === 'active') matchesStatus = o.status < 4
-    else if (statusFilter === 'all') matchesStatus = true
-    else matchesStatus = o.status === +statusFilter
+    const matchesStatus = orderStep(o) < 4
 
     const q = searchVal.trim().toLowerCase()
-    const matchesSearch = !q || 
-      o.ref.toLowerCase().includes(q) ||
-      o.name.toLowerCase().includes(q) ||
+    const matchesSearch = !q ||
+      (o.ref || '').toLowerCase().includes(q) ||
+      (o.name || '').toLowerCase().includes(q) ||
       (o.phone && o.phone.includes(q)) ||
       (o.address && o.address.toLowerCase().includes(q))
 
@@ -366,6 +366,8 @@ function Orders() {
       default: return { label: 'Processing', cls: 'st-0' }
     }
   }
+
+  const activeOrderCount = rows => rows.filter(order => orderStep(order) < 4).length
 
   const getNextActionLabel = s => {
     switch (s) {
@@ -395,19 +397,6 @@ function Orders() {
           <span><b>Kitchen Sound Alert:</b> {soundEnabled ? 'Active (Dual-tone chime on new order)' : 'Muted'}</span>
         </div>
         <div className="sound-strip-btns">
-          <button
-            className="btn-sound-small"
-            onClick={async () => {
-              setRefreshingOrders(true)
-              say('Refreshing live order queue...')
-              await refreshAllData()
-              setRefreshingOrders(false)
-            }}
-            disabled={refreshingOrders}
-            title="Refresh order queue"
-          >
-            {refreshingOrders ? 'Refreshing...' : 'Refresh Orders'}
-          </button>
           <button className="btn-sound-small" onClick={() => { playKitchenChime(); say('Testing chime...') }}>
             Test Chime
           </button>
@@ -421,13 +410,13 @@ function Orders() {
       <div className="pbd-filter-row">
         <div className="pbd-branch-chips">
           <button className={`branch-chip-btn ${branchFilter === 'all' ? 'on' : ''}`} onClick={() => setBranchFilter('all')}>
-            All Branches ({orders.length})
+            All Branches ({activeOrderCount(orders)})
           </button>
           <button className={`branch-chip-btn ${branchFilter === 'cug' ? 'on' : ''}`} onClick={() => setBranchFilter('cug')}>
-            Catholic University ({orders.filter(o => o.branch === 'cug').length})
+            Catholic University ({activeOrderCount(orders.filter(o => o.branch === 'cug'))})
           </button>
           <button className={`branch-chip-btn ${branchFilter === 'sunyani' ? 'on' : ''}`} onClick={() => setBranchFilter('sunyani')}>
-            Sunyani Main ({orders.filter(o => o.branch === 'sunyani').length})
+            Sunyani Main ({activeOrderCount(orders.filter(o => o.branch === 'sunyani'))})
           </button>
         </div>
 
@@ -442,13 +431,21 @@ function Orders() {
 
       {/* Orders Grid */}
       <div className="pbd-orders-grid">
+        {displayedOrders.length === 0 && (
+          <div className="pbd-empty-orders" role="status">
+            <strong>{searchVal.trim() ? 'No orders match your search.' : 'No active orders at this branch.'}</strong>
+            <span>{searchVal.trim() ? 'Try a different reference, customer name, or phone number.' : 'Completed orders are hidden from the kitchen queue.'}</span>
+            {searchVal.trim() && <button className="btn-sound-small" onClick={() => setSearchVal('')}>Clear search</button>}
+          </div>
+        )}
         {displayedOrders.map(o => {
-          const stInfo = getStatusColor(o.status)
+          const status = orderStep(o)
+          const stInfo = getStatusColor(status)
           const targetBranch = branchObj(o.branch)
           const dispatchWhatsAppUrl = buildOrderWhatsAppUrl(o)
 
           return (
-            <div key={o.ref} className={`pbd-order-card status-border-${o.status}`}>
+            <div key={o.ref} className={`pbd-order-card status-border-${status}`}>
               <div className="pbd-order-head">
                 <span className="pbd-order-ref">#{o.ref}</span>
                 <span className={`pbd-status-badge ${stInfo.cls}`}>{stInfo.label}</span>
@@ -507,17 +504,17 @@ function Orders() {
                 </a>
                 {o.orderStatus === 'pending_payment' ? (
                   <span className="unpaid-pill">Awaiting Paystack payment</span>
-                ) : o.status === 3 && o.orderType === 'delivery' ? (
+                ) : status === 3 && o.orderType === 'delivery' ? (
                   <button className="btn-pbd-advance" onClick={() => go('/delivery')}>Open Delivery Desk →</button>
-                ) : o.status < 4 ? (
+                ) : status < 4 ? (
                   <button
                     className="btn-pbd-advance"
                     disabled={advancingRef === o.ref}
                     onClick={async () => {
                       setAdvancingRef(o.ref)
                       try {
-                        await setStatus(o.ref, o.status + 1)
-                        say(`Moved to ${getStatusObj(o.status + 1).label}`)
+                        await setStatus(o.ref, status + 1)
+                        say(`Moved to ${getStatusObj(status + 1).label}`)
                       } catch { /* The provider already reports the server error. */ }
                       finally { setAdvancingRef(null) }
                     }}
@@ -527,7 +524,7 @@ function Orders() {
                         <span className="pbd-spinner-sm" /> Updating...
                       </>
                     ) : (
-                      getNextActionLabel(o.status)
+                      getNextActionLabel(status)
                     )}
                   </button>
                 ) : (
@@ -550,7 +547,6 @@ function MenuAdmin() {
   const [searchMeal, setSearchMeal] = useState('')
   const [editingMeal, setEditingMeal] = useState(null)
   const [busy, setBusy] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
 
   const handleAdd = async () => {
     if (!n.name.trim() || !n.price) return say('Please enter food name and price')
@@ -728,29 +724,17 @@ function MenuAdmin() {
               onChange={e => setSearchMeal(e.target.value)}
               className="pbd-search-input"
             />
-            <button
-              type="button"
-              className="pbd-refresh-btn"
-              onClick={async () => {
-                setRefreshing(true)
-                say('Refreshing menu catalogue...')
-                await refreshAllData()
-                setRefreshing(false)
-              }}
-              disabled={refreshing}
-              title="Refresh menu items"
-            >
-              <svg className={`pbd-refresh-icon ${refreshing ? 'spinning' : ''}`} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-              </svg>
-              <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
-            </button>
           </div>
         </div>
 
-        <Table
-          head={['Dish Photo', 'Meal Name & Description', 'Category', 'Base Price', 'Branch Prices', 'Availability', 'Actions']}
-          rows={displayedMenu.map(m => [
+        {menu.length === 0 ? (
+          <div className="pbd-card mt-3">
+            <LoadingSpinner text="Loading menu catalog..." />
+          </div>
+        ) : (
+          <Table
+            head={['Dish Photo', 'Meal Name & Description', 'Category', 'Base Price', 'Branch Prices', 'Availability', 'Actions']}
+            rows={displayedMenu.map(m => [
             <img
               key="img"
               src={m.img || '/lady3d-logo.jpg'}
@@ -795,6 +779,7 @@ function MenuAdmin() {
             </div>
           ])}
         />
+        )}
       </div>
 
       {/* EDIT DISH MODAL */}
@@ -1100,7 +1085,9 @@ function Customers() {
           setCustomersState(res.customers)
         }
       })
-      .catch(() => {})
+      .catch(error => {
+        if (alive) say(error.message, { type: 'error' })
+      })
       .finally(() => {
         if (alive) setLoading(false)
       })
@@ -1211,17 +1198,6 @@ function Customers() {
           <h3>Registered Customers & Loyalty Club Directory</h3>
           <p className="muted small">Manage food club points, preferred campus branches, and direct communication.</p>
         </div>
-        <button
-          className="pbd-refresh-btn"
-          onClick={handleRefresh}
-          disabled={loading}
-          title="Refresh customer list"
-        >
-          <svg className={`pbd-refresh-icon ${loading ? 'spinning' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-          </svg>
-          {loading ? 'Refreshing...' : 'Refresh List'}
-        </button>
       </div>
 
       <div className="pbd-stats-pill-row">
@@ -1446,17 +1422,6 @@ function Staff() {
           <h3>Staff Roster & Permissions Management</h3>
           <p className="muted small">Create real staff sign-ins, assign a branch and disable accounts when access should end.</p>
         </div>
-        <button
-          className="pbd-refresh-btn"
-          onClick={loadStaff}
-          disabled={loadingStaff}
-          title="Refresh staff roster"
-        >
-          <svg className={`pbd-refresh-icon ${loadingStaff ? 'spinning' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-          </svg>
-          {loadingStaff ? 'Refreshing...' : 'Refresh Roster'}
-        </button>
       </div>
 
       {/* Add Staff Form */}
@@ -1731,13 +1696,6 @@ function Promos() {
           <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>Promotions & Banner Codes</h3>
           <span className="muted small">Manage homepage announcements & student discount vouchers</span>
         </div>
-        <button
-          className="btn-sound-small"
-          onClick={loadPromos}
-          title="Reload latest promos from database"
-        >
-          Refresh List
-        </button>
       </div>
 
       <div id="promo-editor" className="pbd-add-meal-grid mt-2" style={{ background: '#FAF7F4', padding: '16px', borderRadius: '12px', border: '1px solid #EFE6DC' }}>
@@ -1853,9 +1811,8 @@ function Promos() {
 
 // 10. Paystack payments queue
 function Payments() {
-  const { orders, markPaid, say, refreshAllData } = useApp()
+  const { orders, markPaid, say } = useApp()
   const [filterPay, setFilterPay] = useState('all')
-  const [refreshing, setRefreshing] = useState(false)
 
   const displayedOrders = orders.filter(o => {
     if (filterPay === 'momo-pending') return o.pay === 'momo' && !o.paid
@@ -1873,24 +1830,6 @@ function Payments() {
         </div>
 
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            className="pbd-refresh-btn"
-            onClick={async () => {
-              setRefreshing(true)
-              say('Refreshing payment queue...')
-              await refreshAllData()
-              setRefreshing(false)
-            }}
-            disabled={refreshing}
-            title="Refresh payment status"
-          >
-            <svg className={`pbd-refresh-icon ${refreshing ? 'spinning' : ''}`} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-            </svg>
-            <span>{refreshing ? 'Refreshing...' : 'Refresh Queue'}</span>
-          </button>
-
           <div className="pbd-cat-chips">
             <button className={`branch-chip-btn ${filterPay === 'all' ? 'on' : ''}`} onClick={() => setFilterPay('all')}>
               All ({orders.length})

@@ -6,7 +6,7 @@ import rateLimit from 'express-rate-limit'
 import bcrypt from 'bcryptjs'
 import cookieParser from 'cookie-parser'
 import cors from 'cors'
-import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto'
+import { randomBytes, randomUUID, createHmac, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 import {
   MenuItem,
@@ -103,7 +103,7 @@ async function getWeeklyVotes() {
   try {
     state = await AppState.findOneAndUpdate(
       { key: 'votes' },
-      { $setOnInsert: { value: { weekOf, counts: {} } } },
+      { $setOnInsert: { value: { weekOf, counts: { 'Waakye Special': 0, 'Jollof & Chicken': 0, 'Fufu & Light Soup': 0 } } } },
       { upsert: true, new: true }
     )
   } catch (error) {
@@ -325,16 +325,6 @@ app.post('/api/auth/signup', asyncRoute(async (req, res) => {
     role: 'customer'
   })
 
-  // Auto-claim any previous guest orders for this phone number
-  try {
-    await Order.updateMany(
-      { phone: body.phone, $or: [{ customerId: { $exists: false } }, { customerId: null }] },
-      { $set: { customerId: user._id, isGuest: false } }
-    )
-  } catch (claimErr) {
-    console.error('Failed to claim guest orders:', claimErr)
-  }
-
   issueSession(res, user)
   res.status(201).json({ user: publicUser(user) })
 }))
@@ -409,11 +399,8 @@ app.post('/api/auth/logout', (_req, res) => {
 // Claim guest orders by phone
 app.post('/api/my/claim-guest-orders', requireAuth, asyncRoute(async (req, res) => {
   if (req.user.role !== 'customer') return res.status(403).json({ error: 'Customer account required' })
-  const result = await Order.updateMany(
-    { phone: req.user.phone, $or: [{ customerId: { $exists: false } }, { customerId: null }] },
-    { $set: { customerId: req.user.id, isGuest: false } }
-  )
-  res.json({ claimedCount: result.modifiedCount })
+  // Phone numbers are not verified by signup/profile, so they cannot prove order ownership.
+  res.json({ claimedCount: 0 })
 }))
 
 app.get('/api/my/orders', requireAuth, asyncRoute(async (req, res) => {
@@ -443,16 +430,21 @@ app.get('/api/my/orders', requireAuth, asyncRoute(async (req, res) => {
 app.post('/api/my/orders/:ref/reviews', requireAuth, asyncRoute(async (req, res) => {
   if (req.user.role !== 'customer') return res.status(403).json({ error: 'Customer account required' })
   const body = z.object({
-    itemId: z.number().int().positive(),
-    stars: z.number().int().min(1).max(5),
-    comment: z.string().trim().min(5).max(1000)
+    itemId: z.coerce.number().int().positive(),
+    stars: z.coerce.number().int().min(1).max(5),
+    comment: z.string().trim().max(1000).optional().default('')
   }).parse(req.body)
+  if (body.comment.length > 0 && body.comment.length < 5) {
+    return res.status(400).json({ error: 'Comments must be at least 5 characters, or leave the comment blank.' })
+  }
   const order = await Order.findOne({ ref: req.params.ref.toUpperCase(), customerId: req.user.id })
   if (!order) return res.status(404).json({ error: 'Order not found in your account' })
-  if (order.orderType !== 'delivery' || order.orderStatus !== 'delivered' || order.deliveryStatus !== 'delivered') {
-    return res.status(409).json({ error: 'You can rate this food after the order has been delivered successfully.' })
+  const completedDelivery = order.orderType === 'delivery' && (order.orderStatus === 'delivered' || order.deliveryStatus === 'delivered' || order.status === 4)
+  const completedCollection = order.orderType === 'collection' && (order.orderStatus === 'collected' || order.status === 4)
+  if (!completedDelivery && !completedCollection && order.status !== 4) {
+    return res.status(409).json({ error: 'You can rate this food after your order has been delivered or collected.' })
   }
-  const item = order.items.find(row => row.id === body.itemId)
+  const item = order.items.find(row => String(row.id) === String(body.itemId))
   if (!item) return res.status(400).json({ error: 'That food item is not part of this order.' })
   try {
     const review = await Review.create({
@@ -1321,16 +1313,23 @@ app.post('/api/admin/reviews', requireRoles('Owner', 'Manager'), asyncRoute(asyn
   res.status(201).json({ review: { ...review.toObject(), id: String(review._id) } })
 }))
 
+async function updateMenuReviewSummary(itemId) {
+  const [summary] = await Review.aggregate([
+    { $match: { itemId, show: true } },
+    { $group: { _id: '$itemId', rating: { $avg: '$stars' }, reviews: { $sum: 1 } } }
+  ])
+  await MenuItem.updateOne({ id: itemId }, { $set: {
+    rating: summary ? Math.round(summary.rating * 10) / 10 : 0,
+    reviews: summary?.reviews ?? 0
+  } })
+}
+
 app.patch('/api/admin/reviews/:id', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
   const body = z.object({ show: z.boolean() }).strict().parse(req.body)
   const review = await Review.findByIdAndUpdate(req.params.id, { $set: body }, { new: true, runValidators: true }).lean()
   if (!review) return res.status(404).json({ error: 'Review not found' })
   if (review.itemId) {
-    const [summary] = await Review.aggregate([
-      { $match: { itemId: review.itemId, show: true } },
-      { $group: { _id: '$itemId', rating: { $avg: '$stars' }, reviews: { $sum: 1 } } }
-    ])
-    await MenuItem.updateOne({ id: review.itemId }, { $set: { rating: summary?.rating ?? 0, reviews: summary?.reviews ?? 0 } })
+    await updateMenuReviewSummary(review.itemId)
   }
   res.json({ review: { ...review, id: String(review._id) } })
 }))
@@ -1340,11 +1339,7 @@ app.delete('/api/admin/reviews/:id', requireRoles('Owner', 'Manager'), asyncRout
   const result = await Review.deleteOne({ _id: req.params.id })
   if (!result.deletedCount) return res.status(404).json({ error: 'Review not found' })
   if (review?.itemId) {
-    const [summary] = await Review.aggregate([
-      { $match: { itemId: review.itemId, show: true } },
-      { $group: { _id: '$itemId', rating: { $avg: '$stars' }, reviews: { $sum: 1 } } }
-    ])
-    await MenuItem.updateOne({ id: review.itemId }, { $set: { rating: summary?.rating ?? 0, reviews: summary?.reviews ?? 0 } })
+    await updateMenuReviewSummary(review.itemId)
   }
   res.json({ success: true })
 }))
@@ -1506,8 +1501,8 @@ app.post('/api/admin/customers', requireRoles('Owner', 'Manager'), asyncRoute(as
     status: z.string().optional()
   }).parse(req.body)
 
-  const email = `cust_${Date.now()}_${Math.random().toString(36).slice(2, 6)}@lady3d.local`
-  const passwordHash = await bcrypt.hash('Customer123!', 10)
+  const email = `cust_${randomUUID()}@lady3d.local`
+  const passwordHash = await bcrypt.hash(randomBytes(32).toString('base64url'), 12)
 
   const user = await User.create({
     name: body.name,
@@ -1540,10 +1535,12 @@ app.patch('/api/admin/customers/:id/points', requireRoles('Owner', 'Manager'), a
   const delta = z.number().int().parse(req.body?.delta)
 
   if (mongoose.isValidObjectId(id)) {
-    const user = await User.findById(id)
-    if (user && user.role === 'customer') {
-      user.loyaltyPoints = Math.max(0, (user.loyaltyPoints || 0) + delta)
-      await user.save()
+    const user = await User.findOneAndUpdate(
+      { _id: id, role: 'customer' },
+      [{ $set: { loyaltyPoints: { $max: [0, { $add: [{ $ifNull: ['$loyaltyPoints', 0] }, delta] }] } } }],
+      { new: true, projection: { loyaltyPoints: 1 } }
+    )
+    if (user) {
       return res.json({ id, points: user.loyaltyPoints })
     }
   }
@@ -1601,12 +1598,13 @@ app.put('/api/admin/state/:key', requireRoles('Owner', 'Manager'), asyncRoute(as
 
   if (key === 'customers' && Array.isArray(value)) {
     for (const item of value) {
-      if (item.id && mongoose.isValidObjectId(item.id)) {
-        await User.updateOne(
-          { _id: item.id, role: 'customer' },
-          { $set: { loyaltyPoints: item.points, assignedBranch: item.branch || 'cug', phone: item.phone, name: item.name } }
-        )
-      }
+      if (!item || !item.id || !mongoose.isValidObjectId(item.id)) continue
+      const update = {}
+      if (item.points !== undefined && Number.isInteger(item.points) && item.points >= 0) update.loyaltyPoints = item.points
+      if (item.branch !== undefined && ['cug', 'sunyani'].includes(item.branch)) update.assignedBranch = item.branch
+      if (item.phone !== undefined && typeof item.phone === 'string' && /^\+?[0-9 ()-]{9,18}$/.test(item.phone)) update.phone = item.phone
+      if (item.name !== undefined && typeof item.name === 'string' && item.name.trim().length >= 2 && item.name.trim().length <= 100) update.name = item.name.trim()
+      if (Object.keys(update).length) await User.updateOne({ _id: item.id, role: 'customer' }, { $set: update })
     }
   }
 

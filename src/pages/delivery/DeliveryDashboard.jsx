@@ -375,20 +375,13 @@ export default function DeliveryDashboard({ branchId: initialBranch = 'all', sta
               </div>
             )}
 
-            {/* Refresh button */}
-            <button
-              onClick={loadData}
-              disabled={loading}
-              title="Refresh deliveries"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                background: '#ffffff', color: '#574f4a', border: '1px solid #e7dfd5',
-                padding: '8px 12px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer'
-              }}
-            >
-              <IconRefresh size={15} color="#574f4a" spin={loading} />
-              <span>Refresh</span>
-            </button>
+            {/* Live syncing status indicator */}
+            {loading && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#80141B', fontSize: '12px', fontWeight: 700, padding: '6px 12px', background: '#FDF2F2', border: '1px solid #FECACA', borderRadius: '8px' }}>
+                <span className="pbd-spinner-sm" style={{ width: 14, height: 14 }} />
+                <span>Syncing riders...</span>
+              </div>
+            )}
 
             {/* Navigation Links */}
             <Link

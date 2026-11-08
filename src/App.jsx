@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { go, money, useApp, useHash } from './store.jsx'
-import { Link, Wordmark, BranchPicker, BottomNavBar, MobileTopNav, FoodDetailModal, ActionToast, GlobalNetworkBar } from './components/ui.jsx'
+import { Link, Wordmark, BranchPicker, BottomNavBar, MobileTopNav, FoodDetailModal, ActionToast, GlobalNetworkBar, LoadingSpinner, ErrorBoundary } from './components/ui.jsx'
 import { Onboarding, Home, Menu, FoodPage, Cart, Checkout, OrderSuccess, Track, Account, Community, SignIn, SignUp } from './pages/Customer.jsx'
 import Admin from './pages/Admin.jsx'
 import BranchDashboard from './pages/BranchDashboard.jsx'
@@ -24,7 +24,6 @@ function StaffLoginPage() {
       if (session.role === 'Kitchen') go('/kitchen')
       else if (session.role === 'Driver') go('/delivery')
       else if (session.role === 'Cashier') go('/branch/' + (session.assignedBranch === 'sunyani' ? 'sunyani' : 'cug') + '/pos')
-      else if (session.role === 'Owner' || session.role === 'Manager') go('/admin')
       else go('/admin')
     }
     catch (error) { say(error.message, { type: 'error', title: 'Sign-in Failed' }) }
@@ -91,7 +90,7 @@ export default function App() {
 
   // If user accesses /kitchen directly
   if (seg[0] === 'kitchen') {
-    if (!authReady) return <div className="wrap sec">Checking kitchen session…</div>
+    if (!authReady) return <div className="pbd-loading-screen"><LoadingSpinner text="Checking kitchen session…" /></div>
     if (!staffUser) return <><GlobalNetworkBar /><StaffLoginPage /><ActionToast /></>
     if (!['Owner', 'Manager', 'Kitchen'].includes(staffUser.role)) return <div className="wrap sec"><h1>Kitchen access restricted</h1><p>Your staff role cannot manage kitchen orders.</p></div>
     return (
@@ -105,7 +104,7 @@ export default function App() {
 
   // If user accesses /delivery directly
   if (seg[0] === 'delivery') {
-    if (!authReady) return <div className="wrap sec">Checking rider session…</div>
+    if (!authReady) return <div className="pbd-loading-screen"><LoadingSpinner text="Checking rider session…" /></div>
     if (!staffUser) return <><GlobalNetworkBar /><StaffLoginPage /><ActionToast /></>
     if (!['Owner', 'Manager', 'Driver'].includes(staffUser.role)) return <div className="wrap sec"><h1>Delivery access restricted</h1><p>Your staff role cannot manage deliveries.</p></div>
     return (
@@ -119,7 +118,7 @@ export default function App() {
 
   // If user accesses /admin directly
   if (seg[0] === 'admin') {
-    if (!authReady) return <div className="wrap sec">Checking staff session…</div>
+    if (!authReady) return <div className="pbd-loading-screen"><LoadingSpinner text="Checking staff session…" /></div>
     if (!staffUser) return <><GlobalNetworkBar /><StaffLoginPage /><ActionToast /></>
     if (!['Owner', 'Manager'].includes(staffUser.role)) return <div className="wrap sec"><h1>Admin access restricted</h1><p>Your staff role cannot open administration.</p></div>
     return (
@@ -133,7 +132,7 @@ export default function App() {
 
   // If user accesses /branch, /branch/sunyani, or /branch/cug directly
   if (seg[0] === 'branch') {
-    if (!authReady) return <div className="wrap sec">Checking staff session…</div>
+    if (!authReady) return <div className="pbd-loading-screen"><LoadingSpinner text="Checking branch session…" /></div>
     if (!staffUser) return <><GlobalNetworkBar /><StaffLoginPage /><ActionToast /></>
     if (!['Owner', 'Manager', 'Cashier'].includes(staffUser.role)) return <div className="wrap sec"><h1>Branch access restricted</h1><p>Your staff role cannot access branch operations.</p></div>
     const branchTarget = seg[1] === 'sunyani' ? 'sunyani' : 'cug'
@@ -316,21 +315,11 @@ export default function App() {
                   <span>Delivery Portal</span>
                 </Link>
               )}
-              <button
-                type="button"
-                className="top-refresh-header-btn"
-                onClick={async () => {
-                  say('Refreshing latest data...')
-                  await refreshAllData()
-                }}
-                disabled={isNetworkBusy}
-                title="Refresh menu and orders"
-              >
-                <svg className={`pbd-refresh-icon ${isNetworkBusy ? 'spinning' : ''}`} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-                </svg>
-                <span>{isNetworkBusy ? 'Syncing...' : 'Refresh'}</span>
-              </button>
+              {isNetworkBusy && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', padding: '0 8px' }} title="Syncing data...">
+                  <span className="pbd-spinner-sm" style={{ width: 16, height: 16 }} />
+                </div>
+              )}
               <Link to="/cart" className="top-basket-pill" aria-label="Cart">
                 <span className="basket-icon">
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49c.08-.14.12-.31.12-.48 0-.55-.45-1-1-1H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/></svg>
@@ -347,7 +336,9 @@ export default function App() {
 
         {/* Main Content Pane */}
         <main className="modern-main-content">
-          {pageContent}
+          <ErrorBoundary>
+            {pageContent}
+          </ErrorBoundary>
         </main>
 
         {/* Modal for Food Details */}

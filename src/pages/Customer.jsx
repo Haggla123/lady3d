@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, go, money, useApp } from '../store.jsx'
-import { Link, Food, DishCard, BranchPicker, Stars, CategoryIcon, LoadingSpinner, RefreshButton } from '../components/ui.jsx'
+import { Link, Food, DishCard, BranchPicker, Stars, CategoryIcon, LoadingSpinner } from '../components/ui.jsx'
 import { STATUSES, BRANCHES, CATEGORIES_WITH_ICONS, EXTRAS, buildOrderWhatsAppUrl } from '../data.js'
 
 // 1. Onboarding / Get Started Sequence (SnapEats Screen 1)
@@ -318,10 +318,7 @@ export function Menu() {
           <span className="eyebrow-accent">EXPLORE OUR KITCHEN</span>
           <h1 className="menu-page-title">Lady 3D’s Menu</h1>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <RefreshButton onClick={refreshAllData} loading={isNetworkBusy} title="Refresh menu" />
-          <BranchPicker />
-        </div>
+        <BranchPicker />
       </div>
 
       <div className="menu-search-filter-box">
@@ -369,7 +366,9 @@ export function Menu() {
         ))}
       </div>
 
-      {list.length > 0 ? (
+      {menu.length === 0 ? (
+        <LoadingSpinner text="Loading dishes from Lady 3D’s kitchen..." />
+      ) : list.length > 0 ? (
         <div className="dishes-grid-cards">
           {list.map(dish => (
             <DishCard key={dish.id} it={dish} />
@@ -790,19 +789,37 @@ export function Cart() {
 
 // 6. Checkout Flow
 export function Checkout() {
-  const { lines, subtotal, discount, deliveryFee, total, price, ok, branch, place, user, setQty, orderType, setOrderType, selectedZoneId, setSelectedZoneId, deliveryZones, say, paystackEnabled } = useApp()
+  const { lines, subtotal, discount, deliveryFee, total, price, ok, branch, place, user, setQty, orderType, setOrderType, selectedZoneId, setSelectedZoneId, deliveryZones, say, paystackEnabled, promoCode } = useApp()
   const [f, setF] = useState({
     name: user?.name || '',
     phone: user?.phone || '',
     email: user?.email || '',
     pay: 'cash',
     address: '',
-    note: ''
+    note: '',
+    collectionTime: 'ASAP'
   })
   const [step, setStep] = useState(1)
   const [err, setErr] = useState('')
   const [placing, setPlacing] = useState(false)
   const [idempotencyKey] = useState(() => crypto.randomUUID())
+
+  // Ensure scroll resets to top whenever transitioning between steps
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+  }, [step])
+
+  // Sync profile data once user session loads
+  useEffect(() => {
+    if (user) {
+      setF(prev => ({
+        ...prev,
+        name: prev.name || user.name || '',
+        phone: prev.phone || user.phone || '',
+        email: prev.email || user.email || ''
+      }))
+    }
+  }, [user])
 
   useEffect(() => {
     if (orderType !== 'delivery') return
@@ -827,22 +844,48 @@ export function Checkout() {
   }
 
   const next = () => {
-    if (!branch) return setErr('Please choose a branch.')
-    if (bad.length) return setErr('Please remove items unavailable at this branch.')
-    if (f.name.trim().length < 2 || !/^0\d{9}$/.test(f.phone.replace(/\s+/g, ''))) {
-      return setErr('Please enter your full name and valid 10-digit phone number (e.g. 0241234567).')
+    if (!branch) {
+      const msg = 'Please choose a branch.'
+      setErr(msg)
+      say(msg, { type: 'error' })
+      return
     }
-    if (orderType === 'delivery' && !f.address.trim()) return setErr('Enter your hostel, block, or room number for delivery.')
-    if (f.pay === 'momo' && !/^\S+@\S+\.\S+$/.test(f.email || '')) return setErr('Enter an email address for Paystack checkout.')
+    if (bad.length) {
+      const msg = 'Please remove items unavailable at this branch.'
+      setErr(msg)
+      say(msg, { type: 'error' })
+      return
+    }
+    const cleanPhone = (f.phone || '').replace(/[\s()-]/g, '').replace(/^\+?233/, '0')
+    if (f.name.trim().length < 2 || !/^0\d{9}$/.test(cleanPhone)) {
+      const msg = 'Please enter your full name and a valid 10-digit phone number (e.g. 0241234567).'
+      setErr(msg)
+      say(msg, { type: 'error' })
+      return
+    }
+    if (orderType === 'delivery' && !f.address.trim()) {
+      const msg = 'Enter your hostel, block, or room number for delivery.'
+      setErr(msg)
+      say(msg, { type: 'error' })
+      return
+    }
+    if (f.pay === 'momo' && !/^\S+@\S+\.\S+$/.test(f.email || '')) {
+      const msg = 'Enter a valid email address for Paystack checkout.'
+      setErr(msg)
+      say(msg, { type: 'error' })
+      return
+    }
     setErr('')
     setStep(2)
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
   }
 
   const submit = async () => {
     if (bad.length) return setStep(1)
     setPlacing(true)
+    const cleanPhone = (f.phone || '').replace(/[\s()-]/g, '').replace(/^\+?233/, '0')
     try {
-      const ref = await place({ ...f, idempotencyKey })
+      const ref = await place({ ...f, phone: cleanPhone, idempotencyKey })
       if (f.pay === 'momo') return
       go('/success/' + ref)
     } catch (error) { setErr(error.message); say(error.message, { type: 'error' }) }
@@ -1055,19 +1098,22 @@ export function Checkout() {
             {/* Order Items Preview */}
             <div className="review-items-box">
               <span className="review-box-title">Order Items ({lines.length})</span>
-              {lines.map(l => {
-                const lineId = l.lineId || l.id
+              {lines.map((l, idx) => {
+                const lineId = l.lineId || l.id || idx
+                const itemName = l.it?.name || 'Meal'
+                const extras = Array.isArray(l.extrasList) ? l.extrasList : []
+                const itemTotal = l.lineTotal ?? (price(l.it || {}) * (l.qty || 1))
                 return (
                   <div key={lineId} className="review-item-row">
                     <div className="review-item-left">
-                      <b>{l.qty} × {l.it.name}</b>
-                      {l.extrasList && l.extrasList.length > 0 && (
+                      <b>{l.qty || 1} × {itemName}</b>
+                      {extras.length > 0 && (
                         <span className="review-extras-note">
-                          +{l.extrasList.map(e => e.name).join(', ')}
+                          +{extras.map(e => e?.name || e?.title || 'Extra').join(', ')}
                         </span>
                       )}
                     </div>
-                    <b className="review-item-price">{money(l.lineTotal || (price(l.it) * l.qty))}</b>
+                    <b className="review-item-price">{money(itemTotal)}</b>
                   </div>
                 )
               })}
@@ -1076,7 +1122,7 @@ export function Checkout() {
             {/* Delivery & Contact Note */}
             <div className="review-delivery-note">
               <div className="review-note-row">
-                <b>Branch:</b> <span>{BRANCHES.find(b => b.id === branch)?.name}</span>
+                <b>Branch:</b> <span>{BRANCHES.find(b => b.id === branch)?.name || 'Catholic University Annex'}</span>
               </div>
               <div className="review-note-row">
                 <b>Contact:</b> <span>{f.name} ({f.phone})</span>
@@ -1087,6 +1133,11 @@ export function Checkout() {
               {orderType === 'delivery' && (
                 <div className="review-note-row">
                   <b>Address:</b> <span>{f.address}</span>
+                </div>
+              )}
+              {orderType === 'collection' && f.collectionTime && (
+                <div className="review-note-row">
+                  <b>Pickup Time:</b> <span>{f.collectionTime}</span>
                 </div>
               )}
               {f.note && (
@@ -1103,11 +1154,11 @@ export function Checkout() {
             <div className="review-breakdown-box">
               <div className="review-row">
                 <span>Subtotal</span>
-                <span>{money(subtotal)}</span>
+                <span>{money(subtotal || 0)}</span>
               </div>
               {discount > 0 && (
                 <div className="review-row discount-text">
-                  <span>Voucher Discount ({promoCode})</span>
+                  <span>Voucher Discount {promoCode ? `(${promoCode})` : ''}</span>
                   <span>-{money(discount)}</span>
                 </div>
               )}
@@ -1118,16 +1169,24 @@ export function Checkout() {
               <hr className="review-divider" />
               <div className="review-row total-row">
                 <b>Total Amount to Pay</b>
-                <b className="total-highlight-val">{money(total)}</b>
+                <b className="total-highlight-val">{money(total || 0)}</b>
               </div>
             </div>
 
             <div className="review-action-btns">
-              <button className="btn-back-step" onClick={() => setStep(1)} disabled={placing}>
+              <button
+                type="button"
+                className="btn-back-step"
+                onClick={() => {
+                  setStep(1)
+                  window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+                }}
+                disabled={placing}
+              >
                 ← Back to Edit
               </button>
-              <button className="btn-order-cta grow" onClick={submit} disabled={placing}>
-                {placing ? <><span className="pbd-spinner-sm" /> Placing Order...</> : `Confirm & Place Order · ${money(total)}`}
+              <button type="button" className="btn-order-cta grow" onClick={submit} disabled={placing}>
+                {placing ? <><span className="pbd-spinner-sm" /> Placing Order...</> : `Confirm & Place Order · ${money(total || 0)}`}
               </button>
             </div>
           </div>
@@ -1352,8 +1411,11 @@ export function Track({ refId }) {
           <span className="eyebrow-accent">LIVE ORDER STATUS</span>
           <h1 className="track-page-title">Track Your Order</h1>
         </div>
-        {currentRef && (
-          <RefreshButton onClick={refreshStatus} loading={trackingLoading} title="Refresh order status" />
+        {currentRef && trackingLoading && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#80141b', fontSize: '13px', fontWeight: 600 }}>
+            <span className="pbd-spinner-sm" />
+            <span>Updating status...</span>
+          </div>
         )}
       </div>
 
@@ -1436,15 +1498,18 @@ export function Track({ refId }) {
 
           <div className="live-progress-flow">
             {STATUSES.map((step, idx) => {
-              const isPast = idx < order.status
-              const isCurrent = idx === order.status
+              const isComplete = order.orderStatus === 'collected' || order.orderStatus === 'delivered' || order.status >= 4
+              const isPast = idx < order.status || (isComplete && idx === STATUSES.length - 1)
+              const isCurrent = !isComplete && idx === order.status
               return (
                 <div
                   key={step.label}
                   className={`flow-step ${isPast ? 'done' : ''} ${isCurrent ? 'current' : ''}`}
                 >
                   <div className="flow-step-icon">
-                    <span className="step-num-badge">{idx + 1}</span>
+                    {isComplete && idx === STATUSES.length - 1
+                      ? <svg aria-label="Completed" role="img" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#15803d" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 4 4L19 6" /></svg>
+                      : <span className="step-num-badge">{idx + 1}</span>}
                   </div>
                   <div className="flow-step-body">
                     <b className="flow-step-name">{step.label}</b>
@@ -1461,7 +1526,7 @@ export function Track({ refId }) {
               {order.items.map((it, i) => (
                 <div key={i} className="summary-item-row">
                   <span>{it.qty} × {it.name}</span>
-                  <b>{money(it.price * it.qty)}</b>
+                  <b>{money(((it.price ?? it.unitPrice ?? 0) + (it.extras || []).reduce((sum, extra) => sum + (extra.price || 0), 0)) * it.qty)}</b>
                 </div>
               ))}
             </div>
@@ -1915,12 +1980,12 @@ export function Account() {
 
   const submitFoodRating = async (order, item, key) => {
     const draft = ratingDrafts[key] || { stars: 5, comment: '' }
-    if (draft.comment.trim().length < 5) return say('Please add a comment of at least 5 characters.')
+    if (draft.comment.trim().length > 0 && draft.comment.trim().length < 5) return say('Comments must be at least 5 characters, or leave the comment blank.')
     setSavingRating(key)
     try {
       const { review } = await api(`/my/orders/${encodeURIComponent(order.ref)}/reviews`, {
         method: 'POST',
-        body: JSON.stringify({ itemId: item.id, stars: draft.stars, comment: draft.comment })
+        body: JSON.stringify({ itemId: item.id, stars: draft.stars, comment: draft.comment.trim() })
       })
       setOrders(rows => rows.map(row => row.ref === order.ref
         ? { ...row, customerReviews: [...(row.customerReviews || []), review] }
@@ -2023,9 +2088,6 @@ export function Account() {
       {/* Tab Panels */}
       {tab === 'orders' && (
         <div className="account-orders-list">
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
-            <RefreshButton onClick={refreshAllData} loading={isNetworkBusy} title="Refresh orders list" />
-          </div>
           {/* Guest Order Claiming Banner */}
           <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '14px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
             <div>
@@ -2065,10 +2127,12 @@ export function Account() {
                 <Link to={'/track/' + o.ref} className="btn-track-pill">
                   {(o.orderStatus || STATUSES[o.status]?.label || 'Active').replace(/_/g, ' ')} ↗
                 </Link>
-                {o.orderType === 'delivery' && o.orderStatus === 'delivered' && (
+                {((o.orderType === 'delivery' && (o.orderStatus === 'delivered' || o.deliveryStatus === 'delivered' || o.status === 4)) ||
+                  (o.orderType === 'collection' && (o.orderStatus === 'collected' || o.status === 4)) ||
+                  o.status === 4) && (
                   <div className="order-food-ratings">
                     <h4>How was your food?</h4>
-                    <p>Rate each item from this delivered order.</p>
+                    <p>Rate each item from this completed order.</p>
                     {(o.items || []).map(item => {
                       const key = `${o.ref}-${item.id}`
                       const existing = (o.customerReviews || []).find(review => review.itemId === item.id)
@@ -2436,7 +2500,11 @@ export function Community() {
             <h2>Verified Customer Reviews</h2>
             <p className="card-box-sub">Feedback from students, faculty, and catering clients.</p>
           </div>
-          <RefreshButton onClick={refreshAllData} loading={isNetworkBusy} title="Refresh reviews & community data" />
+          {isNetworkBusy && (
+            <div style={{ display: 'flex', alignItems: 'center' }} title="Syncing reviews...">
+              <span className="pbd-spinner-sm" style={{ width: 16, height: 16 }} />
+            </div>
+          )}
         </div>
 
         <div className="reviews-list-grid">
