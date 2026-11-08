@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { api } from '../../services/api/client.js'
 import { playKitchenChime } from '../../services/notifications/chime.js'
 import { money } from '../../utils/money.js'
@@ -199,6 +199,7 @@ export default function KitchenDashboard({ branchId: propBranch = 'cug', staffUs
   const [activeTab, setActiveTab] = useState('queue') // 'queue' | 'stock'
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const activeLoads = useRef(0)
   const [statusMsg, setStatusMsg] = useState({ text: '', type: 'info' })
 
   // Stock Filter states
@@ -212,8 +213,9 @@ export default function KitchenDashboard({ branchId: propBranch = 'cug', staffUs
     setTimeout(() => setStatusMsg({ text: '', type: 'info' }), 4000)
   }
 
-  const loadData = async (isManual = false) => {
-    if (isManual) setRefreshing(true)
+  const loadData = async () => {
+    activeLoads.current += 1
+    setRefreshing(true)
     try {
       const [ordRes, availRes, menuRes] = await Promise.all([
         api('/kitchen/orders'),
@@ -231,13 +233,14 @@ export default function KitchenDashboard({ branchId: propBranch = 'cug', staffUs
     } catch (err) {
       console.error('Kitchen refresh failed:', err.message)
     } finally {
-      if (isManual) setTimeout(() => setRefreshing(false), 500)
+      activeLoads.current -= 1
+      if (activeLoads.current === 0) setRefreshing(false)
     }
   }
 
   useEffect(() => {
     loadData()
-    const timer = setInterval(() => loadData(false), 8000)
+    const timer = setInterval(() => loadData(), 8000)
     return () => clearInterval(timer)
   }, [selectedBranch, soundEnabled])
 

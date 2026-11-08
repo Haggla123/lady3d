@@ -336,7 +336,7 @@ export default function App() {
 
         {/* Main Content Pane */}
         <main className="modern-main-content">
-          <ErrorBoundary>
+          <ErrorBoundary key={path}>
             {pageContent}
           </ErrorBoundary>
         </main>

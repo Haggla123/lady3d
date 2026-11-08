@@ -1881,9 +1881,8 @@ export function SignUp() {
 
 // 10. Modern Account / Profile Screen (Bon Appétit Screen 5)
 export function Account() {
-  const { user, setUser, logoutUser, orders, setOrders, favs, menu, points, setPoints, say, canInstall, installPwa, updateProfile, loyaltyRules, api, claimGuestOrders, refreshAllData, isNetworkBusy } = useApp()
+  const { user, setUser, logoutUser, orders, setOrders, favs, menu, points, setPoints, say, canInstall, installPwa, updateProfile, loyaltyRules, api, refreshAllData, isNetworkBusy } = useApp()
   const [tab, setTab] = useState('orders')
-  const [claimingGuest, setClaimingGuest] = useState(false)
   const [profile, setProfile] = useState({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '', branch: user?.branch || 'cug', profileImage: user?.profileImage || '' })
   const profileUserId = useRef(user?.id)
   const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
@@ -2088,30 +2087,6 @@ export function Account() {
       {/* Tab Panels */}
       {tab === 'orders' && (
         <div className="account-orders-list">
-          {/* Guest Order Claiming Banner */}
-          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '14px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-            <div>
-              <b style={{ color: '#166534', fontSize: '14px' }}>Placed orders as a guest earlier?</b>
-              <div style={{ fontSize: '12px', color: '#15803d', marginTop: '2px' }}>
-                Link previous orders placed with phone number <b>{user.phone}</b> to your registered account.
-              </div>
-            </div>
-            <button
-              disabled={claimingGuest}
-              onClick={async () => {
-                setClaimingGuest(true)
-                try {
-                  await claimGuestOrders()
-                } finally {
-                  setClaimingGuest(false)
-                }
-              }}
-              style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', fontWeight: 700, fontSize: '13px', cursor: 'pointer', opacity: claimingGuest ? 0.7 : 1 }}
-            >
-              {claimingGuest ? <><span className="pbd-spinner-sm" /> Claiming...</> : 'Claim Previous Orders'}
-            </button>
-          </div>
-
           {mine.length > 0 ? (
             mine.map(o => (
               <div key={o.ref} className="account-order-item-card">

@@ -81,6 +81,7 @@ const authBody = z.object({
   email: z.string().trim().min(2, 'Enter your email address or username').max(254),
   password: z.string().min(1, 'Password is required').max(128)
 })
+const DUMMY_PASSWORD_HASH = '$2b$12$eSYGwB4k8vTtD0yAEeIv6u4hpScgwVCx1IHfYDSs9w2zGgvq/krW.'
 
 const lookupUserByLogin = async (identifier) => {
   const clean = (identifier || '').trim().toLowerCase()
@@ -332,7 +333,7 @@ app.post('/api/auth/signup', asyncRoute(async (req, res) => {
 app.post('/api/auth/login', asyncRoute(async (req, res) => {
   const { email, password } = authBody.parse(req.body)
   const user = await lookupUserByLogin(email)
-  const isMatch = user ? await bcrypt.compare(password, user.passwordHash) : false
+  const isMatch = await bcrypt.compare(password, user?.passwordHash || DUMMY_PASSWORD_HASH)
   if (!user || user.active === false || !isMatch) {
     return res.status(401).json({ error: 'Email or password is incorrect' })
   }
@@ -343,7 +344,7 @@ app.post('/api/auth/login', asyncRoute(async (req, res) => {
 app.post('/api/auth/staff-login', asyncRoute(async (req, res) => {
   const { email, password } = authBody.parse(req.body)
   const user = await lookupUserByLogin(email)
-  const isMatch = user ? await bcrypt.compare(password, user.passwordHash) : false
+  const isMatch = await bcrypt.compare(password, user?.passwordHash || DUMMY_PASSWORD_HASH)
   if (!user || user.role === 'customer' || user.active === false || !isMatch) {
     return res.status(401).json({ error: 'Email or password is incorrect' })
   }
@@ -1326,7 +1327,11 @@ async function updateMenuReviewSummary(itemId) {
 
 app.patch('/api/admin/reviews/:id', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
   const body = z.object({ show: z.boolean() }).strict().parse(req.body)
-  const review = await Review.findByIdAndUpdate(req.params.id, { $set: body }, { new: true, runValidators: true }).lean()
+  const existing = body.show ? await Review.findById(req.params.id).select('createdAt').lean() : null
+  const update = body.show
+    ? { ...body, time: new Date(existing?.createdAt || Date.now()).toLocaleDateString('en', { month: 'short', year: 'numeric' }) }
+    : body
+  const review = await Review.findByIdAndUpdate(req.params.id, { $set: update }, { new: true, runValidators: true }).lean()
   if (!review) return res.status(404).json({ error: 'Review not found' })
   if (review.itemId) {
     await updateMenuReviewSummary(review.itemId)
@@ -1578,7 +1583,11 @@ app.get('/api/admin/state', asyncRoute(async (req, res) => {
   const rows = await AppState.find({ key: { $in: allowedStateKeys } }).lean()
   const state = Object.fromEntries(rows.map(row => [row.key, row.value]))
   if (req.user.role === 'Cashier' || req.user.role === 'Driver') delete state.staff
-  state.customers = await getAggregatedCustomers()
+  if (['Owner', 'Manager', 'Cashier'].includes(req.user.role)) {
+    state.customers = await getAggregatedCustomers()
+  } else {
+    delete state.customers
+  }
   res.json({ state })
 }))
 
