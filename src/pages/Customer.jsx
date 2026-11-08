@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, go, money, useApp } from '../store.jsx'
-import { Link, Food, DishCard, BranchPicker, Stars, CategoryIcon } from '../components/ui.jsx'
+import { Link, Food, DishCard, BranchPicker, Stars, CategoryIcon, LoadingSpinner, RefreshButton } from '../components/ui.jsx'
 import { STATUSES, BRANCHES, CATEGORIES_WITH_ICONS, EXTRAS, buildOrderWhatsAppUrl } from '../data.js'
 
 // 1. Onboarding / Get Started Sequence (SnapEats Screen 1)
@@ -9,7 +9,7 @@ export function Onboarding({ onStart, onSignIn, onSignUp }) {
   const slides = [
     {
       title: "Good Food & Great Taste Made Easy with Lady 3D’s!",
-      desc: "Delicious Ghanaian meals in one click with Lady 3D's Catering! Place orders for authentic waakye, smoky jollof, fresh banku and chilled drinks — fast and convenient."
+      desc: "Delicious Ghanaian meals in one click with Lady 3D's Catering! Place orders for authentic waakye, smoky jollof, fresh banku and chilled drinks - fast and convenient."
     },
     {
       title: "Fast Campus Pickup & Doorstep Delivery in Sunyani",
@@ -86,13 +86,11 @@ export function Onboarding({ onStart, onSignIn, onSignUp }) {
 
 // 2. Modern Home Page (SnapEats Screen 2 + Arby's + Bon Appétit)
 export function Home() {
-  const { menu, branch, setBranch, orderType, setOrderType, applyPromo, setActiveFood, add, promos, user, loyaltyRules } = useApp()
+  const { menu, branch, orderType, setOrderType, applyPromo, setActiveFood, add, promos, user, loyaltyRules } = useApp()
   const [activeCat, setActiveCat] = useState('All')
   const [searchVal, setSearchVal] = useState('')
 
   const activeBranch = BRANCHES.find(b => b.id === branch) || BRANCHES[0]
-  const otherBranch = BRANCHES.find(b => b.id !== (branch || 'cug')) || BRANCHES[1]
-
   // Filter dishes strictly for current active branch
   const currentBranchDishes = menu.filter(m => !m.isExtra && (!branch || m.avail[branch]))
   const filteredDishes = currentBranchDishes.filter(m => {
@@ -109,26 +107,6 @@ export function Home() {
     <div className="home-modern-view">
       {/* Top Location & Delivery Bar */}
       <section className="home-top-bar">
-        <div className="location-info-block">
-          <span className="delivery-to-label">Deliver to</span>
-          <div className="location-dropdown-row">
-            <span className="loc-pin-icon">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
-            </span>
-            <select
-              className="location-select"
-              value={branch || 'cug'}
-              onChange={e => setBranch(e.target.value)}
-              aria-label="Delivery location"
-            >
-              {BRANCHES.map(b => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
-            <span className="loc-chevron">▾</span>
-          </div>
-        </div>
-
         <div className="delivery-toggle-pill">
           <button
             className={`toggle-option ${orderType === 'delivery' ? 'active' : ''}`}
@@ -137,8 +115,8 @@ export function Home() {
             Delivery
           </button>
           <button
-            className={`toggle-option ${orderType === 'pickup' ? 'active' : ''}`}
-            onClick={() => setOrderType('pickup')}
+            className={`toggle-option ${orderType === 'collection' ? 'active' : ''}`}
+            onClick={() => setOrderType('collection')}
           >
             Pickup
           </button>
@@ -318,7 +296,7 @@ export function Home() {
 
 // 3. Modern Menu Screen
 export function Menu() {
-  const { menu, cats, ok, branch } = useApp()
+  const { menu, cats, ok, branch, refreshAllData, isNetworkBusy } = useApp()
   const init = new URLSearchParams(location.search || (location.hash ? location.hash.split('?')[1] : '') || '').get('cat') || 'All'
   const [cat, setCat] = useState(init)
   const [q, setQ] = useState('')
@@ -340,7 +318,10 @@ export function Menu() {
           <span className="eyebrow-accent">EXPLORE OUR KITCHEN</span>
           <h1 className="menu-page-title">Lady 3D’s Menu</h1>
         </div>
-        <BranchPicker />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <RefreshButton onClick={refreshAllData} loading={isNetworkBusy} title="Refresh menu" />
+          <BranchPicker />
+        </div>
       </div>
 
       <div className="menu-search-filter-box">
@@ -568,8 +549,9 @@ export function FoodPage({ id }) {
 
 // 5. Modern Cart / Order Page (SnapEats Screen 3)
 export function Cart() {
-  const { lines, setQty, subtotal, discount, deliveryFee, total, price, ok, count, promoCode, promoError, applyPromo, removePromo, orderType, setOrderType, promos } = useApp()
+  const { lines, setQty, subtotal, discount, deliveryFee, total, price, ok, count, promoCode, promoError, applyPromo, removePromo, branch, orderType, setOrderType, promos } = useApp()
   const [promoInput, setPromoInput] = useState('')
+  const [applyingPromo, setApplyingPromo] = useState(false)
 
   if (!count) {
     return (
@@ -604,6 +586,11 @@ export function Cart() {
         <span className="cart-badge-count">{count} {count === 1 ? 'item' : 'items'}</span>
       </div>
 
+      <div className="cart-branch-choice">
+        <label className="field-group-title">Pickup / Delivery Location</label>
+        <BranchPicker variant="compact-pill" />
+      </div>
+
       {/* Delivery / Pickup selector */}
       <div className="cart-mode-selector">
         <button
@@ -611,12 +598,12 @@ export function Cart() {
           className={`cart-mode-btn ${orderType === 'delivery' ? 'active' : ''}`}
           onClick={() => setOrderType('delivery')}
         >
-          Campus Delivery
+          {branch === 'sunyani' ? 'Sunyani Delivery' : 'Campus Delivery'}
         </button>
         <button
           type="button"
-          className={`cart-mode-btn ${orderType === 'pickup' ? 'active' : ''}`}
-          onClick={() => setOrderType('pickup')}
+          className={`cart-mode-btn ${orderType === 'collection' ? 'active' : ''}`}
+          onClick={() => setOrderType('collection')}
         >
           Counter Pickup
         </button>
@@ -626,14 +613,14 @@ export function Cart() {
       <div className="cart-mode-info-banner">
         {orderType === 'delivery' ? (
           <span>
-            Express campus delivery (15–25 mins). {subtotal >= 80 ? (
+            Express {branch === 'sunyani' ? 'Sunyani' : 'campus'} delivery (15-25 mins). {subtotal >= 80 ? (
               <b className="free-tag">FREE delivery unlocked!</b>
             ) : (
               <span>Add <b>{money(Math.max(0, 80 - subtotal))}</b> more for FREE delivery.</span>
             )}
           </span>
         ) : (
-          <span>Ready for instant pickup at kitchen counter in 10–15 mins.</span>
+          <span>Ready for instant pickup at {BRANCHES.find(item => item.id === branch)?.short || 'selected branch'} counter in 10-15 mins.</span>
         )}
       </div>
 
@@ -730,7 +717,20 @@ export function Cart() {
           {promoCode ? (
             <button className="btn-promo-remove" onClick={removePromo}>Remove</button>
           ) : (
-            <button className="btn-promo-apply" onClick={() => applyPromo(promoInput)}>Apply</button>
+            <button
+              className="btn-promo-apply"
+              disabled={applyingPromo || !promoInput.trim()}
+              onClick={async () => {
+                setApplyingPromo(true)
+                try {
+                  await applyPromo(promoInput)
+                } finally {
+                  setApplyingPromo(false)
+                }
+              }}
+            >
+              {applyingPromo ? <><span className="pbd-spinner-sm" /> Applying...</> : 'Apply'}
+            </button>
           )}
         </div>
 
@@ -790,7 +790,7 @@ export function Cart() {
 
 // 6. Checkout Flow
 export function Checkout() {
-  const { lines, subtotal, discount, deliveryFee, total, price, ok, branch, place, user, setQty, orderType, setOrderType, say, paystackEnabled } = useApp()
+  const { lines, subtotal, discount, deliveryFee, total, price, ok, branch, place, user, setQty, orderType, setOrderType, selectedZoneId, setSelectedZoneId, deliveryZones, say, paystackEnabled } = useApp()
   const [f, setF] = useState({
     name: user?.name || '',
     phone: user?.phone || '',
@@ -801,7 +801,16 @@ export function Checkout() {
   })
   const [step, setStep] = useState(1)
   const [err, setErr] = useState('')
+  const [placing, setPlacing] = useState(false)
   const [idempotencyKey] = useState(() => crypto.randomUUID())
+
+  useEffect(() => {
+    if (orderType !== 'delivery') return
+    const activeZones = deliveryZones.filter(zone => zone.branchId === branch && zone.active)
+    if (!activeZones.some(zone => zone.id === selectedZoneId)) {
+      setSelectedZoneId(activeZones[0]?.id || '')
+    }
+  }, [branch, deliveryZones, orderType, selectedZoneId, setSelectedZoneId])
 
   const bad = lines.filter(l => branch && !ok(l.it))
 
@@ -820,9 +829,10 @@ export function Checkout() {
   const next = () => {
     if (!branch) return setErr('Please choose a branch.')
     if (bad.length) return setErr('Please remove items unavailable at this branch.')
-    if (!f.name.trim() || !/^0\d{9}$/.test(f.phone.replace(/\s+/g, ''))) {
+    if (f.name.trim().length < 2 || !/^0\d{9}$/.test(f.phone.replace(/\s+/g, ''))) {
       return setErr('Please enter your full name and valid 10-digit phone number (e.g. 0241234567).')
     }
+    if (orderType === 'delivery' && !f.address.trim()) return setErr('Enter your hostel, block, or room number for delivery.')
     if (f.pay === 'momo' && !/^\S+@\S+\.\S+$/.test(f.email || '')) return setErr('Enter an email address for Paystack checkout.')
     setErr('')
     setStep(2)
@@ -830,11 +840,13 @@ export function Checkout() {
 
   const submit = async () => {
     if (bad.length) return setStep(1)
+    setPlacing(true)
     try {
       const ref = await place({ ...f, idempotencyKey })
       if (f.pay === 'momo') return
       go('/success/' + ref)
-    } catch (error) { setErr(error.message); say(error.message) }
+    } catch (error) { setErr(error.message); say(error.message, { type: 'error' }) }
+    finally { setPlacing(false) }
   }
 
   return (
@@ -848,11 +860,15 @@ export function Checkout() {
           Basket
         </Link>
         <h1 className="checkout-title">Checkout</h1>
-        <div className="checkout-progress-steps">
-          <span className={`step-dot ${step === 1 ? 'current' : 'done'}`}>1. Details</span>
-          <span className="step-sep">→</span>
-          <span className={`step-dot ${step === 2 ? 'current' : ''}`}>2. Confirm</span>
-        </div>
+        <nav className="checkout-progress-steps" aria-label="Checkout progress">
+          <span className={`step-dot ${step === 1 ? 'current' : 'done'}`} aria-current={step === 1 ? 'step' : undefined}>
+            <span className="step-number">1</span><span>Details</span>
+          </span>
+          <span className="step-sep" aria-hidden="true">→</span>
+          <span className={`step-dot ${step === 2 ? 'current' : ''}`} aria-current={step === 2 ? 'step' : undefined}>
+            <span className="step-number">2</span><span>Confirm</span>
+          </span>
+        </nav>
       </div>
 
       <div className="checkout-form-card">
@@ -886,11 +902,11 @@ export function Checkout() {
                     Approved Delivery Zone & Rate:
                   </label>
                   <select
-                    value={useApp().selectedZoneId}
-                    onChange={e => useApp().setSelectedZoneId(e.target.value)}
+                    value={selectedZoneId}
+                    onChange={e => setSelectedZoneId(e.target.value)}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1.5px solid #cbd5e1', fontSize: '14px', background: '#fff', fontWeight: 600 }}
                   >
-                    {useApp().deliveryZones.filter(z => z.branchId === branch && z.active).map(zone => (
+                    {deliveryZones.filter(z => z.branchId === branch && z.active).map(zone => (
                       <option key={zone.id} value={zone.id}>
                         {zone.name} (+{money(zone.fee)} delivery fee · {zone.estimatedMinutes})
                       </option>
@@ -923,38 +939,46 @@ export function Checkout() {
               <label className="field-group-title">2. Contact & Delivery Location</label>
               
               <label className="input-field-wrap">
-                <span>Full Name</span>
+                <span>Full Name <b className="required-field-mark" aria-hidden="true">*</b></span>
                 <input
                   value={f.name}
                   onChange={e => setF({ ...f, name: e.target.value })}
                   placeholder="e.g. Julie Martin"
+                  minLength={2}
+                  required
+                  aria-required="true"
                 />
               </label>
 
               <label className="input-field-wrap">
-                <span>Phone Number (for SMS & WhatsApp dispatch)</span>
+                <span>Phone Number (for SMS & WhatsApp dispatch) <b className="required-field-mark" aria-hidden="true">*</b></span>
                 <input
                   type="tel"
                   value={f.phone}
                   onChange={e => setF({ ...f, phone: e.target.value })}
                   placeholder="024 123 4567"
+                  required
+                  aria-required="true"
                 />
               </label>
 
               {f.pay === 'momo' && (
                 <label className="input-field-wrap">
-                  <span>Email for Paystack receipt</span>
-                  <input type="email" autoComplete="email" required value={f.email || ''} onChange={e => setF({ ...f, email: e.target.value })} placeholder="you@example.com" />
+                  <span>Email for Paystack receipt <b className="required-field-mark" aria-hidden="true">*</b></span>
+                  <input type="email" autoComplete="email" required aria-required="true" value={f.email || ''} onChange={e => setF({ ...f, email: e.target.value })} placeholder="you@example.com" />
                 </label>
               )}
 
               {orderType === 'delivery' && (
                 <label className="input-field-wrap">
-                  <span>Hostel / Block & Room Number</span>
+                  <span>Hostel / Block & Room Number <b className="required-field-mark" aria-hidden="true">*</b></span>
                   <input
                     value={f.address}
                     onChange={e => setF({ ...f, address: e.target.value })}
                     placeholder="e.g. Hall 3, Block B, Room 14 (CUG Fiapre)"
+                    maxLength={300}
+                    required
+                    aria-required="true"
                   />
                 </label>
               )}
@@ -973,21 +997,22 @@ export function Checkout() {
             <div className="form-group-section">
               <label className="field-group-title">3. Payment Method</label>
               <div className="payment-options-grid">
-                {paystackEnabled && <label className={`payment-card-opt ${f.pay === 'momo' ? 'selected' : ''}`}>
+                <label className={`payment-card-opt ${f.pay === 'momo' ? 'selected' : ''} ${!paystackEnabled ? 'disabled' : ''}`}>
                   <input
                     type="radio"
                     name="pay"
                     checked={f.pay === 'momo'}
+                    disabled={!paystackEnabled}
                     onChange={() => setF({ ...f, pay: 'momo' })}
                   />
                   <div className="payment-opt-info">
                     <div className="payment-title-row">
-                      <b>Pay securely with Paystack</b>
-                      <span className="pay-badge-popular">Instant</span>
+                      <b>Mobile Money via Paystack</b>
+                      {paystackEnabled && <span className="pay-badge-popular">Instant</span>}
                     </div>
-                    <small>Pay by Mobile Money, card, or another Paystack-supported method</small>
+                    <small>{paystackEnabled ? 'Approve a payment prompt on your MTN, Telecel, or AT MoMo phone.' : 'Unavailable until the payment service is configured.'}</small>
                   </div>
-                </label>}
+                </label>
 
                 <label className={`payment-card-opt ${f.pay === 'cash' ? 'selected' : ''}`}>
                   <input
@@ -1098,11 +1123,11 @@ export function Checkout() {
             </div>
 
             <div className="review-action-btns">
-              <button className="btn-back-step" onClick={() => setStep(1)}>
+              <button className="btn-back-step" onClick={() => setStep(1)} disabled={placing}>
                 ← Back to Edit
               </button>
-              <button className="btn-order-cta grow" onClick={submit}>
-                Confirm & Place Order · {money(total)}
+              <button className="btn-order-cta grow" onClick={submit} disabled={placing}>
+                {placing ? <><span className="pbd-spinner-sm" /> Placing Order...</> : `Confirm & Place Order · ${money(total)}`}
               </button>
             </div>
           </div>
@@ -1295,6 +1320,21 @@ export function Track({ refId }) {
   const [inputRef, setInputRef] = useState(refId || '')
   const currentRef = (refId || '').toUpperCase()
   const [serverOrder, setServerOrder] = useState(null)
+  const [trackingLoading, setTrackingLoading] = useState(false)
+
+  const refreshStatus = async () => {
+    if (!currentRef) return
+    setTrackingLoading(true)
+    try {
+      const { order: value } = await api(`/orders/${encodeURIComponent(currentRef)}`)
+      setServerOrder(value)
+    } catch {
+      setServerOrder(null)
+    } finally {
+      setTrackingLoading(false)
+    }
+  }
+
   useEffect(() => {
     if (!currentRef) return
     let active = true
@@ -1307,9 +1347,14 @@ export function Track({ refId }) {
 
   return (
     <div className="track-modern-page">
-      <div className="track-header-box">
-        <span className="eyebrow-accent">LIVE ORDER STATUS</span>
-        <h1 className="track-page-title">Track Your Order</h1>
+      <div className="track-header-box" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <span className="eyebrow-accent">LIVE ORDER STATUS</span>
+          <h1 className="track-page-title">Track Your Order</h1>
+        </div>
+        {currentRef && (
+          <RefreshButton onClick={refreshStatus} loading={trackingLoading} title="Refresh order status" />
+        )}
       </div>
 
       <div className="track-search-row">
@@ -1460,6 +1505,7 @@ export function SignIn() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
+  const [busy, setBusy] = useState(false)
 
   if (user) {
     return (
@@ -1480,16 +1526,18 @@ export function SignIn() {
     const cleanEmail = email.trim().toLowerCase()
     if (!cleanEmail) return say('Please enter your email address')
     if (!password) return say('Please enter your password')
+    setBusy(true)
     api('/auth/login', { method: 'POST', body: JSON.stringify({ email: cleanEmail, password }) })
       .then(({ user: account }) => {
         loginUser(account)
         if (account.role === 'Kitchen') go('/kitchen')
         else if (account.role === 'Driver') go('/delivery')
         else if (account.role === 'Cashier') go('/branch/' + (account.assignedBranch === 'sunyani' ? 'sunyani' : 'cug') + '/pos')
-        else if (account.role === 'Owner' || account.role === 'Manager') go('/')
+        else if (account.role === 'Owner' || account.role === 'Manager') go('/admin')
         else go('/account')
       })
       .catch(error => say(error.message, { type: 'error', title: 'Sign-in Failed' }))
+      .finally(() => setBusy(false))
   }
 
   return (
@@ -1572,8 +1620,16 @@ export function SignIn() {
             </button>
           </div>
 
-          <button type="submit" className="btn-auth-submit">
-            Sign In <span>→</span>
+          <button type="submit" className="btn-auth-submit" disabled={busy}>
+            {busy ? (
+              <>
+                <span className="pbd-spinner-sm" /> Signing in...
+              </>
+            ) : (
+              <>
+                Sign In <span>→</span>
+              </>
+            )}
           </button>
         </form>
 
@@ -1598,6 +1654,7 @@ export function SignUp() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [agreed, setAgreed] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   if (user) {
     return (
@@ -1625,6 +1682,7 @@ export function SignUp() {
     if (!password || password.length < 8) return say('Use a password with at least 8 characters')
     if (!agreed) return say('Please agree to terms to register')
 
+    setBusy(true)
     api('/auth/signup', {
       method: 'POST',
       body: JSON.stringify({
@@ -1637,6 +1695,7 @@ export function SignUp() {
     })
       .then(({ user: account }) => { loginUser(account); say('Your account is ready.'); go('/') })
       .catch(error => say(error.message, { type: 'error', title: 'Registration Failed' }))
+      .finally(() => setBusy(false))
   }
 
   return (
@@ -1731,8 +1790,16 @@ export function SignUp() {
             <span>I agree to receive order status SMS updates & rewards info.</span>
           </label>
 
-          <button type="submit" className="btn-auth-submit">
-            Create Account & Get 20% Off <span>→</span>
+          <button type="submit" className="btn-auth-submit" disabled={busy}>
+            {busy ? (
+              <>
+                <span className="pbd-spinner-sm" /> Creating Account...
+              </>
+            ) : (
+              <>
+                Create Account & Get 20% Off <span>→</span>
+              </>
+            )}
           </button>
         </form>
 
@@ -1749,11 +1816,16 @@ export function SignUp() {
 
 // 10. Modern Account / Profile Screen (Bon Appétit Screen 5)
 export function Account() {
-  const { user, setUser, logoutUser, orders, favs, menu, points, setPoints, say, canInstall, installPwa, updateProfile, loyaltyRules, api } = useApp()
+  const { user, setUser, logoutUser, orders, setOrders, favs, menu, points, setPoints, say, canInstall, installPwa, updateProfile, loyaltyRules, api, claimGuestOrders, refreshAllData, isNetworkBusy } = useApp()
   const [tab, setTab] = useState('orders')
+  const [claimingGuest, setClaimingGuest] = useState(false)
   const [profile, setProfile] = useState({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '', branch: user?.branch || 'cug', profileImage: user?.profileImage || '' })
   const profileUserId = useRef(user?.id)
   const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [savingPassword, setSavingPassword] = useState(false)
+  const [ratingDrafts, setRatingDrafts] = useState({})
+  const [savingRating, setSavingRating] = useState('')
   useEffect(() => {
     if (profileUserId.current === user?.id) return
     profileUserId.current = user?.id
@@ -1764,17 +1836,21 @@ export function Account() {
     let active = true
     const refreshAccount = async () => {
       try {
-        const { user: current } = await api('/auth/me')
+        const [{ user: current }, { orders: currentOrders }] = await Promise.all([
+          api('/auth/me'),
+          api('/my/orders')
+        ])
         if (active) {
           setUser(current)
           setPoints(current.loyaltyPoints || 0)
+          setOrders(currentOrders || [])
         }
       } catch { /* Session may have expired while the account page is open. */ }
     }
     refreshAccount()
     const timer = window.setInterval(refreshAccount, 30_000)
     return () => { active = false; window.clearInterval(timer) }
-  }, [user?.id, user?.role, api, setUser, setPoints])
+  }, [user?.id, user?.role, api, setUser, setPoints, setOrders])
 
   const handlePictureSelect = event => {
     const file = event.target.files?.[0]
@@ -1803,15 +1879,32 @@ export function Account() {
     event.target.value = ''
   }
 
+  const handleSaveProfile = async () => {
+    setSavingProfile(true)
+    try {
+      await updateProfile({ name: profile.name, phone: profile.phone, branch: profile.branch, profileImage: profile.profileImage })
+      say('Profile updated.')
+    } catch (error) {
+      say(error.message, { type: 'error' })
+    } finally {
+      setSavingProfile(false)
+    }
+  }
+
   const handlePasswordChange = async event => {
     event.preventDefault()
     if (passwords.newPassword.length < 10) return say('Use a new password with at least 10 characters.')
     if (passwords.newPassword !== passwords.confirmPassword) return say('The new passwords do not match.')
+    setSavingPassword(true)
     try {
       await api('/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: passwords.currentPassword, newPassword: passwords.newPassword }) })
       setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' })
       say('Password changed successfully.')
-    } catch (error) { say(error.message) }
+    } catch (error) {
+      say(error.message, { type: 'error' })
+    } finally {
+      setSavingPassword(false)
+    }
   }
 
   if (!user) {
@@ -1819,6 +1912,27 @@ export function Account() {
   }
 
   const mine = orders.filter(o => o.mine)
+
+  const submitFoodRating = async (order, item, key) => {
+    const draft = ratingDrafts[key] || { stars: 5, comment: '' }
+    if (draft.comment.trim().length < 5) return say('Please add a comment of at least 5 characters.')
+    setSavingRating(key)
+    try {
+      const { review } = await api(`/my/orders/${encodeURIComponent(order.ref)}/reviews`, {
+        method: 'POST',
+        body: JSON.stringify({ itemId: item.id, stars: draft.stars, comment: draft.comment })
+      })
+      setOrders(rows => rows.map(row => row.ref === order.ref
+        ? { ...row, customerReviews: [...(row.customerReviews || []), review] }
+        : row))
+      setRatingDrafts(rows => { const next = { ...rows }; delete next[key]; return next })
+      say('Thanks for rating your food. Your review is awaiting approval.')
+    } catch (error) {
+      say(error.message, { type: 'error' })
+    } finally {
+      setSavingRating('')
+    }
+  }
 
   return (
     <div className="account-modern-page">
@@ -1909,6 +2023,9 @@ export function Account() {
       {/* Tab Panels */}
       {tab === 'orders' && (
         <div className="account-orders-list">
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+            <RefreshButton onClick={refreshAllData} loading={isNetworkBusy} title="Refresh orders list" />
+          </div>
           {/* Guest Order Claiming Banner */}
           <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '14px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
             <div>
@@ -1918,10 +2035,18 @@ export function Account() {
               </div>
             </div>
             <button
-              onClick={() => useApp().claimGuestOrders()}
-              style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+              disabled={claimingGuest}
+              onClick={async () => {
+                setClaimingGuest(true)
+                try {
+                  await claimGuestOrders()
+                } finally {
+                  setClaimingGuest(false)
+                }
+              }}
+              style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', fontWeight: 700, fontSize: '13px', cursor: 'pointer', opacity: claimingGuest ? 0.7 : 1 }}
             >
-              Claim Previous Orders
+              {claimingGuest ? <><span className="pbd-spinner-sm" /> Claiming...</> : 'Claim Previous Orders'}
             </button>
           </div>
 
@@ -1933,10 +2058,46 @@ export function Account() {
                   <div className="order-item-sub">
                     {o.items?.length || 1} items · {money(o.total)} · {o.time || 'Today'}
                   </div>
+                  <span className={`account-order-status ${o.orderStatus === 'delivered' ? 'delivered' : ''}`}>
+                    {(o.orderStatus || STATUSES[o.status]?.label || 'Order').replace(/_/g, ' ')}
+                  </span>
                 </div>
                 <Link to={'/track/' + o.ref} className="btn-track-pill">
-                  {STATUSES[o.status]?.label || 'Active'} ↗
+                  {(o.orderStatus || STATUSES[o.status]?.label || 'Active').replace(/_/g, ' ')} ↗
                 </Link>
+                {o.orderType === 'delivery' && o.orderStatus === 'delivered' && (
+                  <div className="order-food-ratings">
+                    <h4>How was your food?</h4>
+                    <p>Rate each item from this delivered order.</p>
+                    {(o.items || []).map(item => {
+                      const key = `${o.ref}-${item.id}`
+                      const existing = (o.customerReviews || []).find(review => review.itemId === item.id)
+                      const draft = ratingDrafts[key] || { stars: 5, comment: '' }
+                      return (
+                        <div className="order-food-rating" key={key}>
+                          <b>{item.name}</b>
+                          {existing ? (
+                            <div className="rating-submitted"><Stars n={existing.stars} /><span>Review submitted</span></div>
+                          ) : (
+                            <>
+                              <div className="food-rating-stars" role="group" aria-label={`Rate ${item.name}`}>
+                                {[1, 2, 3, 4, 5].map(star => (
+                                  <button key={star} type="button" className={star <= draft.stars ? 'selected' : ''} aria-label={`${star} star${star === 1 ? '' : 's'}`} aria-pressed={draft.stars === star}
+                                    onClick={() => setRatingDrafts(rows => ({ ...rows, [key]: { ...draft, stars: star } }))}>★</button>
+                                ))}
+                              </div>
+                              <textarea value={draft.comment} maxLength={1000} placeholder="Tell us what you thought of this food..."
+                                onChange={event => setRatingDrafts(rows => ({ ...rows, [key]: { ...draft, comment: event.target.value } }))} />
+                              <button type="button" className="btn-rate-food" disabled={savingRating === key} onClick={() => submitFoodRating(o, item, key)}>
+                                {savingRating === key ? 'Submitting…' : 'Submit rating'}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             ))
           ) : (
@@ -2007,16 +2168,30 @@ export function Account() {
             <span>Preferred Branch</span>
             <select value={profile.branch} onChange={e => setProfile({ ...profile, branch: e.target.value })}><option value="cug">Catholic University (Campus Annex)</option><option value="sunyani">Sunyani (Main Branch)</option></select>
           </label>
-          <button className="btn-order-cta" onClick={() => updateProfile({ name: profile.name, phone: profile.phone, branch: profile.branch, profileImage: profile.profileImage }).then(() => say('Profile updated.')).catch(error => say(error.message))}>
-            Save Changes
+          <button className="btn-order-cta" disabled={savingProfile} onClick={handleSaveProfile}>
+            {savingProfile ? (
+              <>
+                <span className="pbd-spinner-sm" /> Saving Changes...
+              </>
+            ) : (
+              'Save Changes'
+            )}
           </button>
           </div>
           <form className="account-settings-card account-password-form" onSubmit={handlePasswordChange}>
             <h3>Change password</h3>
-            <label className="input-field-wrap"><span>Current password</span><input type="password" autoComplete="current-password" required value={passwords.currentPassword} onChange={e => setPasswords({ ...passwords, currentPassword: e.target.value })} /></label>
-            <label className="input-field-wrap"><span>New password</span><input type="password" autoComplete="new-password" minLength={10} required value={passwords.newPassword} onChange={e => setPasswords({ ...passwords, newPassword: e.target.value })} /></label>
-            <label className="input-field-wrap"><span>Confirm new password</span><input type="password" autoComplete="new-password" minLength={10} required value={passwords.confirmPassword} onChange={e => setPasswords({ ...passwords, confirmPassword: e.target.value })} /></label>
-            <button className="btn-order-cta" type="submit">Update Password</button>
+            <label className="input-field-wrap"><span>Current password</span><input type="password" autoComplete="current-password" required value={passwords.currentPassword} onChange={e => setPasswords({ ...passwords, currentPassword: e.target.value })} disabled={savingPassword} /></label>
+            <label className="input-field-wrap"><span>New password</span><input type="password" autoComplete="new-password" minLength={10} required value={passwords.newPassword} onChange={e => setPasswords({ ...passwords, newPassword: e.target.value })} disabled={savingPassword} /></label>
+            <label className="input-field-wrap"><span>Confirm new password</span><input type="password" autoComplete="new-password" minLength={10} required value={passwords.confirmPassword} onChange={e => setPasswords({ ...passwords, confirmPassword: e.target.value })} disabled={savingPassword} /></label>
+            <button className="btn-order-cta" type="submit" disabled={savingPassword}>
+              {savingPassword ? (
+                <>
+                  <span className="pbd-spinner-sm" /> Updating Password...
+                </>
+              ) : (
+                'Update Password'
+              )}
+            </button>
           </form>
         </div>
       )}
@@ -2026,8 +2201,7 @@ export function Account() {
 
 // 11. Campus & Community Page
 export function Community() {
-  const { votes, castVote, voted, reviews, branch, setBranch, say } = useApp()
-  const [r, setR] = useState({ who: '', stars: 5, text: '' })
+  const { votes, castVote, voted, reviews, branch, setBranch, say, refreshAllData, isNetworkBusy } = useApp()
   const tot = Object.values(votes).reduce((a, b) => a + b, 0)
 
   return (
@@ -2257,8 +2431,13 @@ export function Community() {
 
       {/* Reviews Section */}
       <div className="reviews-section-card mt-3">
-        <h2>Verified Customer Reviews</h2>
-        <p className="card-box-sub">Feedback from students, faculty, and catering clients.</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+          <div>
+            <h2>Verified Customer Reviews</h2>
+            <p className="card-box-sub">Feedback from students, faculty, and catering clients.</p>
+          </div>
+          <RefreshButton onClick={refreshAllData} loading={isNetworkBusy} title="Refresh reviews & community data" />
+        </div>
 
         <div className="reviews-list-grid">
           {reviews.filter(x => x.show).map(rev => (
@@ -2277,40 +2456,9 @@ export function Community() {
         </div>
 
         <div className="review-form-box">
-          <h3>Submit Your Review</h3>
-          <div className="review-inputs-row">
-            <input
-              placeholder="Your name and affiliation (e.g. CUG Student)"
-              value={r.who}
-              onChange={e => setR({ ...r, who: e.target.value })}
-            />
-            <select
-              value={r.stars}
-              onChange={e => setR({ ...r, stars: +e.target.value })}
-            >
-              <option value="5">5 Stars (Excellent)</option>
-              <option value="4">4 Stars (Good)</option>
-              <option value="3">3 Stars (Average)</option>
-            </select>
-          </div>
-          <textarea
-            placeholder="Share your experience with our food taste, portions, and service..."
-            value={r.text}
-            onChange={e => setR({ ...r, text: e.target.value })}
-          />
-          <button
-            className="btn-primary-pill"
-            onClick={async () => {
-              if (!r.text) return say('Please type your review first')
-              try {
-                await api('/reviews', { method: 'POST', body: JSON.stringify({ who: r.who || 'Campus Customer', stars: r.stars, text: r.text }) })
-                setR({ who: '', stars: 5, text: '' })
-                say('Thank you. Your review has been sent for moderation.')
-              } catch (error) { say(error.message) }
-            }}
-          >
-            Submit Review
-          </button>
+          <h3>Rate a meal you ordered</h3>
+          <p className="card-box-sub">After a delivery is marked successful, open Account → Order History to leave a star rating and comment for each meal in that order.</p>
+          <Link to="/account" className="btn-primary-pill">Go to your account</Link>
         </div>
       </div>
     </div>

@@ -150,7 +150,8 @@ function DonutChart({ data, total }) {
 
 // 1. Overview Dashboard
 function Overview() {
-  const { orders, say } = useApp()
+  const { orders, say, refreshAllData } = useApp()
+  const [refreshing, setRefreshing] = useState(false)
   const act = orders.filter(o => o.status < 4)
   const cooking = orders.filter(o => o.status === 2)
   const ready = orders.filter(o => o.status === 3)
@@ -188,6 +189,18 @@ function Overview() {
               }}
             >
               Test Kitchen Chime
+            </button>
+            <button
+              className="pbd-btn-hero-white"
+              onClick={async () => {
+                setRefreshing(true)
+                say('Refreshing platform metrics...')
+                await refreshAllData()
+                setRefreshing(false)
+              }}
+              disabled={refreshing}
+            >
+              {refreshing ? 'Refreshing...' : 'Refresh Metrics'}
             </button>
           </div>
         </div>
@@ -307,11 +320,13 @@ function Overview() {
 
 // 2. Kitchen & Orders (Kanban + Branch Tabs + Search + Audio Alert + 1-Tap WhatsApp Dispatch)
 function Orders() {
-  const { orders, setStatus, say } = useApp()
+  const { orders, setStatus, say, refreshAllData } = useApp()
   const [branchFilter, setBranchFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('active')
   const [searchVal, setSearchVal] = useState('')
   const [soundEnabled, setSoundEnabled] = useState(true)
+  const [advancingRef, setAdvancingRef] = useState(null)
+  const [refreshingOrders, setRefreshingOrders] = useState(false)
   const prevOrdersCount = useRef(orders.length)
 
   useEffect(() => {
@@ -380,6 +395,19 @@ function Orders() {
           <span><b>Kitchen Sound Alert:</b> {soundEnabled ? 'Active (Dual-tone chime on new order)' : 'Muted'}</span>
         </div>
         <div className="sound-strip-btns">
+          <button
+            className="btn-sound-small"
+            onClick={async () => {
+              setRefreshingOrders(true)
+              say('Refreshing live order queue...')
+              await refreshAllData()
+              setRefreshingOrders(false)
+            }}
+            disabled={refreshingOrders}
+            title="Refresh order queue"
+          >
+            {refreshingOrders ? 'Refreshing...' : 'Refresh Orders'}
+          </button>
           <button className="btn-sound-small" onClick={() => { playKitchenChime(); say('Testing chime...') }}>
             Test Chime
           </button>
@@ -484,14 +512,23 @@ function Orders() {
                 ) : o.status < 4 ? (
                   <button
                     className="btn-pbd-advance"
+                    disabled={advancingRef === o.ref}
                     onClick={async () => {
+                      setAdvancingRef(o.ref)
                       try {
                         await setStatus(o.ref, o.status + 1)
                         say(`Moved to ${getStatusObj(o.status + 1).label}`)
                       } catch { /* The provider already reports the server error. */ }
+                      finally { setAdvancingRef(null) }
                     }}
                   >
-                    {getNextActionLabel(o.status)}
+                    {advancingRef === o.ref ? (
+                      <>
+                        <span className="pbd-spinner-sm" /> Updating...
+                      </>
+                    ) : (
+                      getNextActionLabel(o.status)
+                    )}
                   </button>
                 ) : (
                   <span className="completed-tag">Completed</span>
@@ -507,12 +544,13 @@ function Orders() {
 
 // 3. Menu Management (Adding Food, Editing Prices, Deleting, Categories)
 function MenuAdmin() {
-  const { menu, setMenu, cats, say, api } = useApp()
+  const { menu, setMenu, cats, say, api, refreshAllData } = useApp()
   const [n, setN] = useState({ name: '', price: '', cat: cats[0] || 'Local Dishes', img: '', desc: '', availCug: true, availSunyani: true })
   const [filterCat, setFilterCat] = useState('All')
   const [searchMeal, setSearchMeal] = useState('')
   const [editingMeal, setEditingMeal] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
 
   const handleAdd = async () => {
     if (!n.name.trim() || !n.price) return say('Please enter food name and price')
@@ -682,13 +720,32 @@ function MenuAdmin() {
             ))}
           </div>
 
-          <input
-            type="text"
-            placeholder="Search meals..."
-            value={searchMeal}
-            onChange={e => setSearchMeal(e.target.value)}
-            className="pbd-search-input"
-          />
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <input
+              type="text"
+              placeholder="Search meals..."
+              value={searchMeal}
+              onChange={e => setSearchMeal(e.target.value)}
+              className="pbd-search-input"
+            />
+            <button
+              type="button"
+              className="pbd-refresh-btn"
+              onClick={async () => {
+                setRefreshing(true)
+                say('Refreshing menu catalogue...')
+                await refreshAllData()
+                setRefreshing(false)
+              }}
+              disabled={refreshing}
+              title="Refresh menu items"
+            >
+              <svg className={`pbd-refresh-icon ${refreshing ? 'spinning' : ''}`} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+              <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+            </button>
+          </div>
         </div>
 
         <Table
@@ -1026,50 +1083,126 @@ function Branches() {
 
 // 6. Customers Directory (Adding Customers, Editing Points, WhatsApp Contact)
 function Customers() {
-  const { customers, setCustomers, say } = useApp()
+  const { customers, setCustomersState, say, api } = useApp()
   const [newCust, setNewCust] = useState({ name: '', phone: '', branch: 'cug', points: 10, status: 'Regular' })
   const [searchCust, setSearchCust] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [adjustingId, setAdjustingId] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    api('/admin/customers')
+      .then(res => {
+        if (alive && Array.isArray(res?.customers)) {
+          setCustomersState(res.customers)
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setLoading(false)
+      })
+    return () => { alive = false }
+  }, [])
+
+  const handleRefresh = async () => {
+    setLoading(true)
+    try {
+      const res = await api('/admin/customers')
+      if (Array.isArray(res?.customers)) {
+        setCustomersState(res.customers)
+        say(`Refreshed ${res.customers.length} registered customers`)
+      }
+    } catch (err) {
+      say(err.message, { type: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleAddCustomer = async () => {
-    if (!newCust.name.trim() || !newCust.phone.trim()) return say('Please enter customer name and phone')
-    const added = {
-      id: Date.now(),
-      name: newCust.name.trim(),
-      phone: newCust.phone.trim(),
-      branch: newCust.branch,
-      ordersCount: 0,
-      spent: 0,
-      points: +newCust.points || 0,
-      status: newCust.status
-    }
+    if (!newCust.name.trim() || !newCust.phone.trim()) return say('Please enter customer name and phone', { type: 'error' })
+    setAdding(true)
     try {
-      await setCustomers([added, ...customers])
+      const res = await api('/admin/customers', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: newCust.name.trim(),
+          phone: newCust.phone.trim(),
+          branch: newCust.branch,
+          points: +newCust.points || 0,
+          status: newCust.status
+        })
+      })
+      const added = res.customer || {
+        id: Date.now(),
+        name: newCust.name.trim(),
+        phone: newCust.phone.trim(),
+        branch: newCust.branch,
+        ordersCount: 0,
+        spent: 0,
+        points: +newCust.points || 0,
+        status: newCust.status
+      }
+      setCustomersState(prev => [added, ...prev])
       setNewCust({ name: '', phone: '', branch: 'cug', points: 10, status: 'Regular' })
       say(`Customer "${added.name}" registered!`)
-    } catch (error) { say(error.message) }
+    } catch (error) {
+      say(error.message, { type: 'error' })
+    } finally {
+      setAdding(false)
+    }
   }
 
   const handleAdjustPoints = async (id, delta) => {
+    setAdjustingId(id)
     try {
-      await setCustomers(customers.map(c => c.id === id ? { ...c, points: Math.max(0, c.points + delta) } : c))
+      const res = await api(`/admin/customers/${id}/points`, {
+        method: 'PATCH',
+        body: JSON.stringify({ delta })
+      })
+      const newPoints = typeof res?.points === 'number' ? res.points : null
+      setCustomersState(prev => prev.map(c => {
+        if (c.id === id) {
+          const updatedPts = newPoints !== null ? newPoints : Math.max(0, (c.points || 0) + delta)
+          return { ...c, points: updatedPts, status: updatedPts >= 50 ? 'VIP Member' : c.status }
+        }
+        return c
+      }))
       say(`Points updated (${delta > 0 ? '+' : ''}${delta})`)
-    } catch (error) { say(error.message) }
+    } catch (error) {
+      say(error.message, { type: 'error' })
+    } finally {
+      setAdjustingId(null)
+    }
   }
 
   const handleDeleteCust = async (id, name) => {
     if (confirm(`Remove customer "${name}"?`)) {
+      setDeletingId(id)
       try {
-        await setCustomers(customers.filter(c => c.id !== id))
+        await api(`/admin/customers/${id}`, { method: 'DELETE' })
+        setCustomersState(prev => prev.filter(c => c.id !== id))
         say(`Removed ${name}`)
-      } catch (error) { say(error.message) }
+      } catch (error) {
+        say(error.message, { type: 'error' })
+      } finally {
+        setDeletingId(null)
+      }
     }
   }
 
   const filtered = customers.filter(c => 
     !searchCust ||
-    c.name.toLowerCase().includes(searchCust.toLowerCase()) ||
-    c.phone.includes(searchCust)
+    (c.name && c.name.toLowerCase().includes(searchCust.toLowerCase())) ||
+    (c.phone && c.phone.includes(searchCust)) ||
+    (c.email && c.email.toLowerCase().includes(searchCust.toLowerCase()))
   )
+
+  const vipCount = customers.filter(c => (c.points || 0) >= 50).length
+  const clubCount = customers.filter(c => (c.points || 0) > 0).length
 
   return (
     <div className="pbd-white-card">
@@ -1078,6 +1211,23 @@ function Customers() {
           <h3>Registered Customers & Loyalty Club Directory</h3>
           <p className="muted small">Manage food club points, preferred campus branches, and direct communication.</p>
         </div>
+        <button
+          className="pbd-refresh-btn"
+          onClick={handleRefresh}
+          disabled={loading}
+          title="Refresh customer list"
+        >
+          <svg className={`pbd-refresh-icon ${loading ? 'spinning' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+          </svg>
+          {loading ? 'Refreshing...' : 'Refresh List'}
+        </button>
+      </div>
+
+      <div className="pbd-stats-pill-row">
+        <span className="pbd-stat-pill">Total Customers: <b>{customers.length}</b></span>
+        <span className="pbd-stat-pill">Points Club Members: <b>{clubCount}</b></span>
+        <span className="pbd-stat-pill">VIP Gold Members (50+ pts): <b>{vipCount}</b></span>
       </div>
 
       {/* Add Customer Card */}
@@ -1087,17 +1237,20 @@ function Customers() {
           value={newCust.name}
           onChange={e => setNewCust({ ...newCust, name: e.target.value })}
           className="pbd-input"
+          disabled={adding}
         />
         <input
           placeholder="Phone (e.g. 024 123 4567)"
           value={newCust.phone}
           onChange={e => setNewCust({ ...newCust, phone: e.target.value })}
           className="pbd-input"
+          disabled={adding}
         />
         <select
           value={newCust.branch}
           onChange={e => setNewCust({ ...newCust, branch: e.target.value })}
           className="pbd-select"
+          disabled={adding}
         >
           <option value="cug">Catholic University (Annex)</option>
           <option value="sunyani">Sunyani Main Branch</option>
@@ -1106,53 +1259,104 @@ function Customers() {
           value={newCust.status}
           onChange={e => setNewCust({ ...newCust, status: e.target.value })}
           className="pbd-select"
+          disabled={adding}
         >
           <option value="Regular">Regular</option>
           <option value="VIP Member">VIP Member</option>
           <option value="New Customer">New Customer</option>
         </select>
-        <button className="btn-pbd-action" onClick={handleAddCustomer}>
-          + Register Customer
+        <button className="btn-pbd-action" disabled={adding} onClick={handleAddCustomer}>
+          {adding ? (
+            <>
+              <span className="pbd-spinner-sm" />
+              Registering...
+            </>
+          ) : (
+            '+ Register Customer'
+          )}
         </button>
       </div>
 
       <div className="mb-2">
         <input
           type="text"
-          placeholder="Search by customer name or phone..."
+          placeholder="Search by customer name, phone, or email..."
           value={searchCust}
           onChange={e => setSearchCust(e.target.value)}
           className="pbd-search-input"
         />
       </div>
 
-      <Table
-        head={['Customer Name', 'Phone', 'Branch', 'Orders', 'Points Balance', 'Member Tier', 'WhatsApp', 'Actions']}
-        rows={filtered.map(c => [
-          <strong key="n">{c.name}</strong>,
-          <span key="p">{c.phone}</span>,
-          <span key="b" className={`branch-pill-sm ${c.branch}`}>{bn(c.branch)}</span>,
-          <b key="o">{c.ordersCount}</b>,
-          <div key="pt" className="inline-points-editor">
-            <button className="btn-pts-adjust" onClick={() => handleAdjustPoints(c.id, -5)} title="Deduct 5 points">-5</button>
-            <span className="points-badge-gold">{c.points} pts</span>
-            <button className="btn-pts-adjust" onClick={() => handleAdjustPoints(c.id, 5)} title="Award 5 points">+5</button>
-          </div>,
-          <span key="t" className="vip-tag">{c.status}</span>,
-          <a
-            key="w"
-            href={`https://wa.me/${c.phone.replace(/\D/g, '').replace(/^0/, '233')}?text=Hello%20${c.name},%20greetings%20from%20Lady%203D's%20Catering!`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-wa-link"
-          >
-            Message
-          </a>,
-          <button key="d" className="btn-del-sm" onClick={() => handleDeleteCust(c.id, c.name)}>
-            Delete
-          </button>
-        ])}
-      />
+      {loading && customers.length === 0 ? (
+        <div className="pbd-loading-container">
+          <span className="pbd-spinner" />
+          <span>Loading customer directory from database...</span>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="pbd-empty-state">
+          <div className="pbd-empty-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>
+            </svg>
+          </div>
+          <h4 style={{ margin: '0 0 6px 0', color: '#1E293B' }}>No registered customers found</h4>
+          <p className="muted small" style={{ maxWidth: '420px', margin: '0 auto' }}>
+            {searchCust ? `No customer matched "${searchCust}". Try clearing your search.` : 'When customers sign up on the website or you register them above, their account, orders, and points will appear here.'}
+          </p>
+        </div>
+      ) : (
+        <Table
+          head={['Customer Name', 'Phone', 'Branch', 'Orders', 'Points Balance', 'Member Tier', 'WhatsApp', 'Actions']}
+          rows={filtered.map(c => [
+            <div key="n">
+              <strong>{c.name}</strong>
+              {c.email && !c.email.endsWith('@lady3d.local') && (
+                <div className="muted small" style={{ fontSize: '11px' }}>{c.email}</div>
+              )}
+            </div>,
+            <span key="p">{c.phone}</span>,
+            <span key="b" className={`branch-pill-sm ${c.branch}`}>{bn(c.branch)}</span>,
+            <b key="o">{c.ordersCount || 0}</b>,
+            <div key="pt" className="inline-points-editor">
+              <button
+                className="btn-pts-adjust"
+                disabled={adjustingId === c.id}
+                onClick={() => handleAdjustPoints(c.id, -5)}
+                title="Deduct 5 points"
+              >
+                -5
+              </button>
+              <span className="points-badge-gold">{c.points || 0} pts</span>
+              <button
+                className="btn-pts-adjust"
+                disabled={adjustingId === c.id}
+                onClick={() => handleAdjustPoints(c.id, 5)}
+                title="Award 5 points"
+              >
+                +5
+              </button>
+            </div>,
+            <span key="t" className="vip-tag">{c.status}</span>,
+            <a
+              key="w"
+              href={`https://wa.me/${(c.phone || '').replace(/\D/g, '').replace(/^0/, '233')}?text=Hello%20${encodeURIComponent(c.name)},%20greetings%20from%20Lady%203D's%20Catering!`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-wa-link"
+            >
+              Message
+            </a>,
+            <button
+              key="d"
+              className="btn-del-sm"
+              disabled={deletingId === c.id}
+              onClick={() => handleDeleteCust(c.id, c.name)}
+            >
+              {deletingId === c.id ? 'Deleting...' : 'Delete'}
+            </button>
+          ])}
+        />
+      )}
     </div>
   )
 }
@@ -1163,16 +1367,37 @@ function Staff() {
   const [staff, setStaff] = useState([])
   const [newStaff, setNewStaff] = useState({ name: '', email: '', password: '', role: 'Cashier', branch: 'cug', phone: '' })
   const [editingStaff, setEditingStaff] = useState(null)
-  useEffect(() => { api('/admin/staff').then(({ staff: rows }) => setStaff(rows)).catch(error => say(error.message)) }, [])
+  const [loadingStaff, setLoadingStaff] = useState(false)
+  const [addingStaff, setAddingStaff] = useState(false)
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  const loadStaff = async () => {
+    setLoadingStaff(true)
+    try {
+      const { staff: rows } = await api('/admin/staff')
+      setStaff(rows || [])
+    } catch (error) {
+      say(error.message, { type: 'error' })
+    } finally {
+      setLoadingStaff(false)
+    }
+  }
+
+  useEffect(() => { loadStaff() }, [])
 
   const handleAddStaff = async () => {
-    if (!newStaff.name.trim() || !newStaff.email.trim() || !newStaff.phone.trim() || newStaff.password.length < 10) return say('Enter the staff details and a password with at least 10 characters')
+    if (!newStaff.name.trim() || !newStaff.email.trim() || !newStaff.phone.trim() || newStaff.password.length < 10) return say('Enter the staff details and a password with at least 10 characters', { type: 'error' })
+    setAddingStaff(true)
     try {
       const { staff: added } = await api('/admin/staff', { method: 'POST', body: JSON.stringify(newStaff) })
       setStaff(rows => [added, ...rows])
       setNewStaff({ name: '', email: '', password: '', role: 'Cashier', branch: 'cug', phone: '' })
       say(`Staff account created for ${added.name}.`)
-    } catch (error) { say(error.message) }
+    } catch (error) {
+      say(error.message, { type: 'error' })
+    } finally {
+      setAddingStaff(false)
+    }
   }
 
   const handleDeleteStaff = (id, name) => {
@@ -1191,8 +1416,8 @@ function Staff() {
   }
 
   const handleSaveStaff = async () => {
-    if (!editingStaff.name.trim() || !editingStaff.email.trim() || !editingStaff.phone.trim()) return say('Enter the staff name, email and phone number')
-    if (editingStaff.password && editingStaff.password.length < 10) return say('Use a temporary password with at least 10 characters')
+    if (!editingStaff.name.trim() || !editingStaff.email.trim() || !editingStaff.phone.trim()) return say('Enter the staff name, email and phone number', { type: 'error' })
+    if (editingStaff.password && editingStaff.password.length < 10) return say('Use a temporary password with at least 10 characters', { type: 'error' })
     const payload = {
       name: editingStaff.name.trim(),
       email: editingStaff.email.trim(),
@@ -1201,12 +1426,17 @@ function Staff() {
       branch: editingStaff.branch,
       ...(editingStaff.password ? { password: editingStaff.password } : {})
     }
+    setSavingEdit(true)
     try {
       const { staff: updated } = await api(`/admin/staff/${editingStaff.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
       setStaff(rows => rows.map(row => row.id === updated.id ? updated : row))
       setEditingStaff(null)
       say(`Updated ${updated.name}'s account.`)
-    } catch (error) { say(error.message) }
+    } catch (error) {
+      say(error.message, { type: 'error' })
+    } finally {
+      setSavingEdit(false)
+    }
   }
 
   return (
@@ -1216,6 +1446,17 @@ function Staff() {
           <h3>Staff Roster & Permissions Management</h3>
           <p className="muted small">Create real staff sign-ins, assign a branch and disable accounts when access should end.</p>
         </div>
+        <button
+          className="pbd-refresh-btn"
+          onClick={loadStaff}
+          disabled={loadingStaff}
+          title="Refresh staff roster"
+        >
+          <svg className={`pbd-refresh-icon ${loadingStaff ? 'spinning' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+          </svg>
+          {loadingStaff ? 'Refreshing...' : 'Refresh Roster'}
+        </button>
       </div>
 
       {/* Add Staff Form */}
@@ -1227,17 +1468,34 @@ function Staff() {
             value={newStaff.name}
             onChange={e => setNewStaff({ ...newStaff, name: e.target.value })}
             className="pbd-input"
+            disabled={addingStaff}
           />
         </label>
 
         <label>
           <span className="field-label-small">Staff Email *</span>
-          <input type="email" placeholder="name@example.com" value={newStaff.email} onChange={e => setNewStaff({ ...newStaff, email: e.target.value })} className="pbd-input" />
+          <input
+            type="email"
+            placeholder="name@example.com"
+            value={newStaff.email}
+            onChange={e => setNewStaff({ ...newStaff, email: e.target.value })}
+            className="pbd-input"
+            disabled={addingStaff}
+          />
         </label>
 
         <label>
           <span className="field-label-small">Temporary Password *</span>
-          <input type="password" minLength={10} autoComplete="new-password" placeholder="At least 10 characters" value={newStaff.password} onChange={e => setNewStaff({ ...newStaff, password: e.target.value })} className="pbd-input" />
+          <input
+            type="password"
+            minLength={10}
+            autoComplete="new-password"
+            placeholder="At least 10 characters"
+            value={newStaff.password}
+            onChange={e => setNewStaff({ ...newStaff, password: e.target.value })}
+            className="pbd-input"
+            disabled={addingStaff}
+          />
         </label>
 
         <label>
@@ -1246,6 +1504,7 @@ function Staff() {
             value={newStaff.role}
             onChange={e => setNewStaff({ ...newStaff, role: e.target.value })}
             className="pbd-select"
+            disabled={addingStaff}
           >
             <option value="Cashier">Cashier</option>
             <option value="Manager">Manager</option>
@@ -1260,6 +1519,7 @@ function Staff() {
             value={newStaff.branch}
             onChange={e => setNewStaff({ ...newStaff, branch: e.target.value })}
             className="pbd-select"
+            disabled={addingStaff}
           >
             <option value="cug">Catholic University (Annex)</option>
             <option value="sunyani">Sunyani Main Branch</option>
@@ -1273,48 +1533,76 @@ function Staff() {
             value={newStaff.phone}
             onChange={e => setNewStaff({ ...newStaff, phone: e.target.value })}
             className="pbd-input"
+            disabled={addingStaff}
           />
         </label>
 
         <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-          <button className="btn-pbd-action full-width" onClick={handleAddStaff}>
-            + Add Staff Member
+          <button className="btn-pbd-action full-width" disabled={addingStaff} onClick={handleAddStaff}>
+            {addingStaff ? (
+              <>
+                <span className="pbd-spinner-sm" /> Adding Staff...
+              </>
+            ) : (
+              '+ Add Staff Member'
+            )}
           </button>
         </div>
       </div>
 
-      {editingStaff && <div className="pbd-white-card mt-2" style={{ border: '1px solid #cbd5e1' }}>
-        <h4>Edit staff account: {editingStaff.name}</h4>
-        <div className="pbd-add-meal-grid mt-2">
-          <label><span className="field-label-small">Staff Name</span><input className="pbd-input" value={editingStaff.name} onChange={e => setEditingStaff({ ...editingStaff, name: e.target.value })} /></label>
-          <label><span className="field-label-small">Sign-in Email</span><input type="email" className="pbd-input" value={editingStaff.email} onChange={e => setEditingStaff({ ...editingStaff, email: e.target.value })} /></label>
-          <label><span className="field-label-small">Phone Number</span><input className="pbd-input" value={editingStaff.phone} onChange={e => setEditingStaff({ ...editingStaff, phone: e.target.value })} /></label>
-          <label><span className="field-label-small">Role</span><select className="pbd-select" value={editingStaff.role} onChange={e => setEditingStaff({ ...editingStaff, role: e.target.value })}><option value="Manager">Manager</option><option value="Kitchen">Kitchen</option><option value="Driver">Driver</option><option value="Cashier">Cashier</option></select></label>
-          <label><span className="field-label-small">Assigned Branch</span><select className="pbd-select" value={editingStaff.branch} onChange={e => setEditingStaff({ ...editingStaff, branch: e.target.value })}><option value="cug">Catholic University (Annex)</option><option value="sunyani">Sunyani Main Branch</option><option value="all">All Branches</option></select></label>
-          <label><span className="field-label-small">Reset Password (optional)</span><input type="password" minLength={10} autoComplete="new-password" className="pbd-input" placeholder="Leave blank to keep current" value={editingStaff.password} onChange={e => setEditingStaff({ ...editingStaff, password: e.target.value })} /></label>
+      {editingStaff && (
+        <div className="pbd-white-card mt-2" style={{ border: '1px solid #cbd5e1' }}>
+          <h4>Edit staff account: {editingStaff.name}</h4>
+          <div className="pbd-add-meal-grid mt-2">
+            <label><span className="field-label-small">Staff Name</span><input className="pbd-input" value={editingStaff.name} onChange={e => setEditingStaff({ ...editingStaff, name: e.target.value })} disabled={savingEdit} /></label>
+            <label><span className="field-label-small">Sign-in Email</span><input type="email" className="pbd-input" value={editingStaff.email} onChange={e => setEditingStaff({ ...editingStaff, email: e.target.value })} disabled={savingEdit} /></label>
+            <label><span className="field-label-small">Phone Number</span><input className="pbd-input" value={editingStaff.phone} onChange={e => setEditingStaff({ ...editingStaff, phone: e.target.value })} disabled={savingEdit} /></label>
+            <label><span className="field-label-small">Role</span><select className="pbd-select" value={editingStaff.role} onChange={e => setEditingStaff({ ...editingStaff, role: e.target.value })}><option value="Manager">Manager</option><option value="Kitchen">Kitchen</option><option value="Driver">Driver</option><option value="Cashier">Cashier</option></select></label>
+            <label><span className="field-label-small">Assigned Branch</span><select className="pbd-select" value={editingStaff.branch} onChange={e => setEditingStaff({ ...editingStaff, branch: e.target.value })}><option value="cug">Catholic University (Annex)</option><option value="sunyani">Sunyani Main Branch</option><option value="all">All Branches</option></select></label>
+            <label><span className="field-label-small">Reset Password (optional)</span><input type="password" minLength={10} autoComplete="new-password" className="pbd-input" placeholder="Leave blank to keep current" value={editingStaff.password} onChange={e => setEditingStaff({ ...editingStaff, password: e.target.value })} disabled={savingEdit} /></label>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button className="btn-pbd-action" disabled={savingEdit} onClick={handleSaveStaff}>
+              {savingEdit ? 'Saving account...' : 'Save account'}
+            </button>
+            <button className="btn-pbd-action" disabled={savingEdit} onClick={() => setEditingStaff(null)}>
+              Cancel
+            </button>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}><button className="btn-pbd-action" onClick={handleSaveStaff}>Save account</button><button className="btn-pbd-action" onClick={() => setEditingStaff(null)}>Cancel</button></div>
-      </div>}
+      )}
 
-      <Table
-        head={['Staff Member', 'Sign-in Email', 'Role', 'Assigned Branch', 'Contact Phone', 'Active Status', 'Actions']}
-        rows={staff.map(s => [
-          <strong key="n">{s.name}</strong>,
-          <span key="e">{s.email}</span>,
-          <span key="r" className="role-tag-badge">{s.role}</span>,
-          <span key="b">{s.branch === 'all' ? 'All Branches' : bn(s.branch)}</span>,
-          <span key="p">{s.phone}</span>,
-          <label key="act" className="pbd-switch">
-            <input
-              type="checkbox"
-              checked={s.active}
-              onChange={() => handleToggleActive(s)}
-            />
-            <span className="pbd-slider" />
-          </label>,
-          <div key="actions" style={{ display: 'flex', gap: 6 }}><button className="btn-del-sm" onClick={() => setEditingStaff({ ...s, password: '' })}>Edit</button><button className="btn-del-sm" onClick={() => handleDeleteStaff(s.id, s.name)}>Disable</button></div>
-        ])}
-      />
+      {loadingStaff && staff.length === 0 ? (
+        <div className="pbd-loading-container">
+          <span className="pbd-spinner" />
+          <span>Loading staff roster...</span>
+        </div>
+      ) : staff.length === 0 ? (
+        <div className="pbd-empty-state">
+          <h4 style={{ margin: '0 0 6px 0', color: '#1E293B' }}>No staff members found</h4>
+          <p className="muted small">Add staff above to grant role-based console access.</p>
+        </div>
+      ) : (
+        <Table
+          head={['Staff Member', 'Sign-in Email', 'Role', 'Assigned Branch', 'Contact Phone', 'Active Status', 'Actions']}
+          rows={staff.map(s => [
+            <strong key="n">{s.name}</strong>,
+            <span key="e">{s.email}</span>,
+            <span key="r" className="role-tag-badge">{s.role}</span>,
+            <span key="b">{s.branch === 'all' ? 'All Branches' : bn(s.branch)}</span>,
+            <span key="p">{s.phone}</span>,
+            <label key="act" className="pbd-switch">
+              <input
+                type="checkbox"
+                checked={s.active}
+                onChange={() => handleToggleActive(s)}
+              />
+              <span className="pbd-slider" />
+            </label>,
+            <div key="actions" style={{ display: 'flex', gap: 6 }}><button className="btn-del-sm" onClick={() => setEditingStaff({ ...s, password: '' })}>Edit</button><button className="btn-del-sm" onClick={() => handleDeleteStaff(s.id, s.name)}>Disable</button></div>
+          ])}
+        />
+      )}
     </div>
   )
 }
@@ -1323,16 +1611,19 @@ function Staff() {
 function Loyalty() {
   const { loyaltyRules, setLoyaltyRules, say } = useApp()
   const [rules, setRules] = useState(loyaltyRules)
+  const [saving, setSaving] = useState(false)
 
   const handleSave = async () => {
     if (!Number.isFinite(rules.spendPerPoint) || rules.spendPerPoint < 1 || !Number.isFinite(rules.rewardThreshold) || rules.rewardThreshold < 1) {
-      say('Spend per point and reward threshold must both be at least 1.')
+      say('Spend per point and reward threshold must both be at least 1.', { type: 'error' })
       return
     }
+    setSaving(true)
     try {
       await setLoyaltyRules(rules)
       say('Loyalty & reward rules saved!')
-    } catch (error) { say(error.message) }
+    } catch (error) { say(error.message, { type: 'error' }) }
+    finally { setSaving(false) }
   }
 
   return (
@@ -1378,8 +1669,14 @@ function Loyalty() {
         </label>
       </div>
 
-      <button className="btn-pbd-action mt-3" onClick={handleSave}>
-        Save Rules Configuration
+      <button className="btn-pbd-action mt-3" disabled={saving} onClick={handleSave}>
+        {saving ? (
+          <>
+            <span className="pbd-spinner-sm" /> Saving Rules...
+          </>
+        ) : (
+          'Save Rules Configuration'
+        )}
       </button>
     </div>
   )
@@ -1556,8 +1853,9 @@ function Promos() {
 
 // 10. Paystack payments queue
 function Payments() {
-  const { orders, markPaid, say } = useApp()
+  const { orders, markPaid, say, refreshAllData } = useApp()
   const [filterPay, setFilterPay] = useState('all')
+  const [refreshing, setRefreshing] = useState(false)
 
   const displayedOrders = orders.filter(o => {
     if (filterPay === 'momo-pending') return o.pay === 'momo' && !o.paid
@@ -1574,16 +1872,36 @@ function Payments() {
           <p className="muted small">Paystack confirms online payments automatically after verification.</p>
         </div>
 
-        <div className="pbd-cat-chips">
-          <button className={`branch-chip-btn ${filterPay === 'all' ? 'on' : ''}`} onClick={() => setFilterPay('all')}>
-            All ({orders.length})
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="pbd-refresh-btn"
+            onClick={async () => {
+              setRefreshing(true)
+              say('Refreshing payment queue...')
+              await refreshAllData()
+              setRefreshing(false)
+            }}
+            disabled={refreshing}
+            title="Refresh payment status"
+          >
+            <svg className={`pbd-refresh-icon ${refreshing ? 'spinning' : ''}`} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+            </svg>
+            <span>{refreshing ? 'Refreshing...' : 'Refresh Queue'}</span>
           </button>
-          <button className={`branch-chip-btn ${filterPay === 'momo-pending' ? 'on' : ''}`} onClick={() => setFilterPay('momo-pending')}>
-            Paystack Pending ({orders.filter(o => o.pay === 'momo' && !o.paid).length})
-          </button>
-          <button className={`branch-chip-btn ${filterPay === 'paid' ? 'on' : ''}`} onClick={() => setFilterPay('paid')}>
-            Verified Paid ({orders.filter(o => o.paid).length})
-          </button>
+
+          <div className="pbd-cat-chips">
+            <button className={`branch-chip-btn ${filterPay === 'all' ? 'on' : ''}`} onClick={() => setFilterPay('all')}>
+              All ({orders.length})
+            </button>
+            <button className={`branch-chip-btn ${filterPay === 'momo-pending' ? 'on' : ''}`} onClick={() => setFilterPay('momo-pending')}>
+              Paystack Pending ({orders.filter(o => o.pay === 'momo' && !o.paid).length})
+            </button>
+            <button className={`branch-chip-btn ${filterPay === 'paid' ? 'on' : ''}`} onClick={() => setFilterPay('paid')}>
+              Verified Paid ({orders.filter(o => o.paid).length})
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1739,9 +2057,9 @@ function Reviews() {
       {reviewLoadStatus === 'error' && <p role="alert" className="small" style={{ color: 'var(--primary)' }}>Could not load reviews: {reviewLoadError}</p>}
 
       <Table
-        head={['Customer Name', 'Rating', 'Testimonial', 'Public Display', 'Actions']}
+        head={['Customer / Order', 'Rating', 'Testimonial', 'Public Display', 'Actions']}
         rows={reviewLoadStatus === 'ready' ? reviewRows.map(r => [
-          <strong key="w">{r.who}</strong>,
+          <div key="w"><strong>{r.who}</strong>{r.itemName && <div className="muted small">{r.itemName} · {r.orderRef}</div>}</div>,
           <span key="s" className="stars-gold">{'★'.repeat(r.stars)}</span>,
           <p key="t" className="small">{r.text}</p>,
           <label key="sw" className="pbd-switch">

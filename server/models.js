@@ -215,9 +215,18 @@ const ReviewSchema = new Schema({
   who: String,
   stars: { type: Number, min: 1, max: 5 },
   text: String,
+  customerId: { type: Schema.Types.ObjectId, ref: 'User' },
+  orderRef: String,
+  itemId: Number,
+  itemName: String,
   show: { type: Boolean, default: true },
   time: String
 }, { timestamps: true })
+
+ReviewSchema.index(
+  { customerId: 1, orderRef: 1, itemId: 1 },
+  { unique: true, partialFilterExpression: { customerId: { $type: 'objectId' }, orderRef: { $type: 'string' }, itemId: { $type: 'number' } } }
+)
 
 const PromoSchema = new Schema({
   code: { type: String, unique: true, uppercase: true },

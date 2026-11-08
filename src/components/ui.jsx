@@ -510,7 +510,7 @@ export function BottomNavBar({ activePath = '/' }) {
 }
 
 export function MobileTopNav({ activePath = '/' }) {
-  const { count, user, branch, setBranch } = useApp()
+  const { count, user, branch, setBranch, isNetworkBusy, refreshAllData, say } = useApp()
   const seg = activePath.split('?')[0].split('/').filter(Boolean)
   const isHome = !seg.length
 
@@ -556,6 +556,21 @@ export function MobileTopNav({ activePath = '/' }) {
         )}
 
         <div className="mobile-header-right-slot">
+          <button
+            type="button"
+            className="mobile-action-circle mobile-refresh-action"
+            onClick={async () => {
+              say('Refreshing live data...')
+              await refreshAllData()
+            }}
+            disabled={isNetworkBusy}
+            title="Refresh latest menu and orders"
+            aria-label="Refresh"
+          >
+            <svg className={`pbd-refresh-icon ${isNetworkBusy ? 'spinning' : ''}`} viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+            </svg>
+          </button>
           <Link to="/community" className="mobile-action-circle" title="Community & Reviews" aria-label="Community">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -648,5 +663,52 @@ export function ActionToast() {
         <div className="action-toast-progress-bar" />
       </div>
     </div>
+  )
+}
+
+export function GlobalNetworkBar() {
+  const { isNetworkBusy } = useApp()
+  if (!isNetworkBusy) return null
+  return (
+    <div className="global-network-loader-bar" role="progressbar" aria-label="Loading data" aria-busy="true">
+      <div className="global-network-loader-pulse" />
+    </div>
+  )
+}
+
+export function LoadingSpinner({ size = 'md', text = '', color = 'red', inline = false }) {
+  const sizeCls = size === 'sm' ? 'pbd-spinner-sm' : size === 'lg' ? 'pbd-spinner-lg' : 'pbd-spinner'
+  const colorCls = color === 'white' ? 'pbd-spinner-white' : color === 'dark' ? 'pbd-spinner-dark' : ''
+  if (inline) {
+    return (
+      <span className="loading-inline-wrap">
+        <span className={`${sizeCls} ${colorCls}`} />
+        {text && <span className="loading-inline-text">{text}</span>}
+      </span>
+    )
+  }
+  return (
+    <div className="pbd-loading-container">
+      <span className={`${sizeCls} ${colorCls}`} />
+      {text && <span className="pbd-loading-text">{text}</span>}
+    </div>
+  )
+}
+
+export function RefreshButton({ onClick, loading, label = 'Refresh', title = 'Refresh data', className = '', variant = 'default' }) {
+  return (
+    <button
+      type="button"
+      className={`pbd-refresh-btn ${className}`}
+      onClick={onClick}
+      disabled={loading}
+      title={title}
+      aria-label={title}
+    >
+      <svg className={`pbd-refresh-icon ${loading ? 'spinning' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+      </svg>
+      <span>{loading ? 'Refreshing...' : label}</span>
+    </button>
   )
 }

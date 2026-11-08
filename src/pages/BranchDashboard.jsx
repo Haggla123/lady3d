@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { api, money, useApp, go } from '../store.jsx'
-import { Link } from '../components/ui.jsx'
+import { Link, RefreshButton, LoadingSpinner } from '../components/ui.jsx'
 import { BRANCHES, STATUSES, EXTRAS, buildOrderWhatsAppUrl } from '../data.js'
 import { playKitchenChime } from './Admin.jsx'
 
@@ -89,6 +89,8 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
     staffUser,
     staffLogout,
     say,
+    refreshAllData,
+    isNetworkBusy,
     api
   } = useApp()
 
@@ -558,6 +560,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
             </div>
 
             <div className="pbd-header-right">
+              <RefreshButton onClick={refreshAllData} loading={isNetworkBusy} title="Refresh console data" />
               {/* Branch Locked Indicator Pill */}
               <div className="branch-header-lock-tag">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
@@ -1309,7 +1312,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                     </label>}
 
                     <button className="btn-pos-submit mt-3" onClick={handlePosSubmit} disabled={posSubmitting}>
-                      {posSubmitting ? 'Submitting…' : 'Dispatch Walk-In Order to Kitchen →'}
+                      {posSubmitting ? <><span className="pbd-spinner-sm" style={{ marginRight: '8px' }} /> Submitting to Kitchen...</> : 'Dispatch Walk-In Order to Kitchen →'}
                     </button>
                   </div>
 

@@ -421,13 +421,56 @@ app.get('/api/my/orders', requireAuth, asyncRoute(async (req, res) => {
   const orders = await Order.find({
     customerId: req.user.id
   }).sort({ createdAt: -1 }).limit(100).lean()
+  const reviews = await Review.find({ customerId: req.user.id, orderRef: { $in: orders.map(order => order.ref) } })
+    .select('orderRef itemId stars text show createdAt')
+    .lean()
+  const reviewsByOrder = new Map()
+  for (const review of reviews) {
+    const rows = reviewsByOrder.get(review.orderRef) || []
+    rows.push(review)
+    reviewsByOrder.set(review.orderRef, rows)
+  }
   res.json({
     orders: orders.map(order => ({
       ...order,
       mine: true,
+      customerReviews: reviewsByOrder.get(order.ref) || [],
       time: order.createdAt.toTimeString().slice(0, 5)
     }))
   })
+}))
+
+app.post('/api/my/orders/:ref/reviews', requireAuth, asyncRoute(async (req, res) => {
+  if (req.user.role !== 'customer') return res.status(403).json({ error: 'Customer account required' })
+  const body = z.object({
+    itemId: z.number().int().positive(),
+    stars: z.number().int().min(1).max(5),
+    comment: z.string().trim().min(5).max(1000)
+  }).parse(req.body)
+  const order = await Order.findOne({ ref: req.params.ref.toUpperCase(), customerId: req.user.id })
+  if (!order) return res.status(404).json({ error: 'Order not found in your account' })
+  if (order.orderType !== 'delivery' || order.orderStatus !== 'delivered' || order.deliveryStatus !== 'delivered') {
+    return res.status(409).json({ error: 'You can rate this food after the order has been delivered successfully.' })
+  }
+  const item = order.items.find(row => row.id === body.itemId)
+  if (!item) return res.status(400).json({ error: 'That food item is not part of this order.' })
+  try {
+    const review = await Review.create({
+      customerId: req.user.id,
+      orderRef: order.ref,
+      itemId: item.id,
+      itemName: item.name,
+      who: req.user.name,
+      stars: body.stars,
+      text: body.comment,
+      show: false,
+      time: 'Pending moderation'
+    })
+    res.status(201).json({ review: { ...review.toObject(), id: String(review._id) } })
+  } catch (error) {
+    if (error.code === 11000) return res.status(409).json({ error: 'You have already rated this food for this order.' })
+    throw error
+  }
 }))
 
 // Delivery Zones
@@ -687,6 +730,7 @@ app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
           email: paymentEmail,
           amount: String(Math.round(total * 100)),
           currency: 'GHS',
+          channels: ['mobile_money'],
           reference: ref,
           callback_url: `${process.env.API_PUBLIC_URL.replace(/\/$/, '')}/api/payments/paystack/return`,
           metadata: { order_ref: ref, branch: input.branch, fulfilment: input.orderType }
@@ -1281,12 +1325,27 @@ app.patch('/api/admin/reviews/:id', requireRoles('Owner', 'Manager'), asyncRoute
   const body = z.object({ show: z.boolean() }).strict().parse(req.body)
   const review = await Review.findByIdAndUpdate(req.params.id, { $set: body }, { new: true, runValidators: true }).lean()
   if (!review) return res.status(404).json({ error: 'Review not found' })
+  if (review.itemId) {
+    const [summary] = await Review.aggregate([
+      { $match: { itemId: review.itemId, show: true } },
+      { $group: { _id: '$itemId', rating: { $avg: '$stars' }, reviews: { $sum: 1 } } }
+    ])
+    await MenuItem.updateOne({ id: review.itemId }, { $set: { rating: summary?.rating ?? 0, reviews: summary?.reviews ?? 0 } })
+  }
   res.json({ review: { ...review, id: String(review._id) } })
 }))
 
 app.delete('/api/admin/reviews/:id', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
+  const review = await Review.findById(req.params.id).select('itemId').lean()
   const result = await Review.deleteOne({ _id: req.params.id })
   if (!result.deletedCount) return res.status(404).json({ error: 'Review not found' })
+  if (review?.itemId) {
+    const [summary] = await Review.aggregate([
+      { $match: { itemId: review.itemId, show: true } },
+      { $group: { _id: '$itemId', rating: { $avg: '$stars' }, reviews: { $sum: 1 } } }
+    ])
+    await MenuItem.updateOne({ id: review.itemId }, { $set: { rating: summary?.rating ?? 0, reviews: summary?.reviews ?? 0 } })
+  }
   res.json({ success: true })
 }))
 
@@ -1389,11 +1448,140 @@ app.delete('/api/admin/menu/:id', requireRoles('Owner'), asyncRoute(async (req, 
   res.json({ success: true, id })
 }))
 
+async function getAggregatedCustomers() {
+  const users = await User.find({ role: 'customer' }).sort({ createdAt: -1 }).lean()
+  const ids = users.map(u => u._id)
+
+  let statsMap = new Map()
+  if (ids.length) {
+    const stats = await Order.aggregate([
+      { $match: { customerId: { $in: ids } } },
+      { $group: { _id: '$customerId', ordersCount: { $sum: 1 }, spent: { $sum: '$total' } } }
+    ])
+    statsMap = new Map(stats.map(s => [String(s._id), s]))
+  }
+
+  const registered = users.map(u => {
+    const s = statsMap.get(String(u._id)) || { ordersCount: 0, spent: 0 }
+    const points = u.loyaltyPoints || 0
+    return {
+      id: String(u._id),
+      name: u.name,
+      email: u.email,
+      phone: u.phone || '',
+      branch: u.assignedBranch || 'cug',
+      ordersCount: s.ordersCount,
+      spent: s.spent,
+      points,
+      status: points >= 50 ? 'VIP Member' : (s.ordersCount === 0 ? 'New Customer' : 'Regular'),
+      createdAt: u.createdAt
+    }
+  })
+
+  // Merge legacy customers from AppState
+  const appStateRow = await AppState.findOne({ key: 'customers' }).lean()
+  const legacy = Array.isArray(appStateRow?.value) ? appStateRow.value : []
+  const seenIds = new Set(registered.map(c => c.id))
+  const seenPhones = new Set(registered.map(c => (c.phone || '').replace(/\D/g, '')).filter(Boolean))
+
+  const extra = legacy.filter(c => {
+    const p = (c.phone || '').replace(/\D/g, '')
+    return !seenIds.has(String(c.id)) && (!p || !seenPhones.has(p))
+  })
+
+  return [...registered, ...extra]
+}
+
+app.get('/api/admin/customers', requireRoles('Owner', 'Manager', 'Cashier'), asyncRoute(async (_req, res) => {
+  const customers = await getAggregatedCustomers()
+  res.json({ customers })
+}))
+
+app.post('/api/admin/customers', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
+  const body = z.object({
+    name: z.string().trim().min(2).max(100),
+    phone: z.string().trim().regex(/^\+?[0-9 ()-]{9,18}$/, 'Enter a valid phone number (at least 9 digits)'),
+    branch: z.enum(['cug', 'sunyani']).default('cug'),
+    points: z.number().int().min(0).default(10),
+    status: z.string().optional()
+  }).parse(req.body)
+
+  const email = `cust_${Date.now()}_${Math.random().toString(36).slice(2, 6)}@lady3d.local`
+  const passwordHash = await bcrypt.hash('Customer123!', 10)
+
+  const user = await User.create({
+    name: body.name,
+    email,
+    phone: body.phone,
+    assignedBranch: body.branch,
+    loyaltyPoints: body.points,
+    role: 'customer',
+    passwordHash
+  })
+
+  const newCust = {
+    id: String(user._id),
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    branch: user.assignedBranch,
+    ordersCount: 0,
+    spent: 0,
+    points: user.loyaltyPoints,
+    status: body.status || 'New Customer',
+    createdAt: user.createdAt
+  }
+
+  res.status(201).json({ customer: newCust })
+}))
+
+app.patch('/api/admin/customers/:id/points', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
+  const { id } = req.params
+  const delta = z.number().int().parse(req.body?.delta)
+
+  if (mongoose.isValidObjectId(id)) {
+    const user = await User.findById(id)
+    if (user && user.role === 'customer') {
+      user.loyaltyPoints = Math.max(0, (user.loyaltyPoints || 0) + delta)
+      await user.save()
+      return res.json({ id, points: user.loyaltyPoints })
+    }
+  }
+
+  const row = await AppState.findOne({ key: 'customers' })
+  if (row && Array.isArray(row.value)) {
+    const found = row.value.find(c => String(c.id) === String(id))
+    if (found) {
+      found.points = Math.max(0, (found.points || 0) + delta)
+      row.markModified('value')
+      await row.save()
+      return res.json({ id, points: found.points })
+    }
+  }
+
+  res.status(404).json({ error: 'Customer not found' })
+}))
+
+app.delete('/api/admin/customers/:id', requireRoles('Owner', 'Manager'), asyncRoute(async (req, res) => {
+  const { id } = req.params
+  if (mongoose.isValidObjectId(id)) {
+    await User.deleteOne({ _id: id, role: 'customer' })
+  }
+  const row = await AppState.findOne({ key: 'customers' })
+  if (row && Array.isArray(row.value)) {
+    row.value = row.value.filter(c => String(c.id) !== String(id))
+    row.markModified('value')
+    await row.save()
+  }
+  res.json({ success: true, id })
+}))
+
 const allowedStateKeys = ['menu', 'cats', 'branchStatus', 'promos', 'staff', 'customers', 'loyaltyRules', 'settings', 'votes', 'reviews']
 app.get('/api/admin/state', asyncRoute(async (req, res) => {
   const rows = await AppState.find({ key: { $in: allowedStateKeys } }).lean()
   const state = Object.fromEntries(rows.map(row => [row.key, row.value]))
   if (req.user.role === 'Cashier' || req.user.role === 'Driver') delete state.staff
+  state.customers = await getAggregatedCustomers()
   res.json({ state })
 }))
 
@@ -1411,19 +1599,22 @@ app.put('/api/admin/state/:key', requireRoles('Owner', 'Manager'), asyncRoute(as
     await MenuItem.deleteMany({ id: { $nin: value.map(item => item.id) } })
   }
 
+  if (key === 'customers' && Array.isArray(value)) {
+    for (const item of value) {
+      if (item.id && mongoose.isValidObjectId(item.id)) {
+        await User.updateOne(
+          { _id: item.id, role: 'customer' },
+          { $set: { loyaltyPoints: item.points, assignedBranch: item.branch || 'cug', phone: item.phone, name: item.name } }
+        )
+      }
+    }
+  }
+
   const row = await AppState.findOneAndUpdate({ key }, { $set: { value } }, { upsert: true, new: true, runValidators: true })
   res.json({ key, value: row.value })
 }))
 
-app.post('/api/reviews', asyncRoute(async (req, res) => {
-  const data = z.object({
-    who: z.string().trim().min(2).max(100),
-    stars: z.number().int().min(1).max(5),
-    text: z.string().trim().min(5).max(1000)
-  }).parse(req.body)
-  const review = await Review.create({ ...data, show: false, time: 'Pending moderation' })
-  res.status(201).json({ review: { id: review.id, show: review.show } })
-}))
+app.post('/api/reviews', (_req, res) => res.status(410).json({ error: 'Rate meals from a successfully delivered order in your account.' }))
 
 app.post('/api/votes', asyncRoute(async (req, res) => {
   const { option } = z.object({ option: z.string().trim().min(1).max(80) }).parse(req.body)

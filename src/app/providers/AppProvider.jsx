@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useRef } from 'react'
 import { MENU, REVIEWS, PROMO_CODES, priceAt, DEFAULT_DELIVERY_ZONES } from '../../data.js'
-import { api } from '../../services/api/client.js'
+import { api, subscribeApiActivity, isApiBusy } from '../../services/api/client.js'
 import { money } from '../../utils/money.js'
 
 const Ctx = createContext()
@@ -61,13 +61,24 @@ export function AppProvider({ children }) {
   const [menu, setMenu] = useState(MENU)
   const [cats, setCatsState] = useState(['Rice', 'Waakye', 'Banku & Fufu', 'Soups & Stews', 'Sides & Drinks'])
   const [customers, setCustomersState] = useState([])
-  const [branch, setBranch] = useState('cug') // default to CUG Annex
-  const [orderType, setOrderType] = useState('delivery') // 'collection' | 'delivery'
+  const [branch, setBranchState] = useState('cug') // default to CUG Annex
+  const [orderType, setOrderType] = useState('collection') // 'collection' | 'delivery'
   const [deliveryZones, setDeliveryZones] = useState(DEFAULT_DELIVERY_ZONES)
   const [selectedZoneId, setSelectedZoneId] = useState('cug-halls')
   const [dailyStock, setDailyStock] = useState([])
   
-  const [cart, setCart] = useState([])
+  const [cart, setCart] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return []
+      const savedCart = JSON.parse(window.localStorage.getItem('lady3d_cart') || '[]')
+      return Array.isArray(savedCart)
+        ? savedCart.filter(line => line && Number.isInteger(line.id) && Number.isInteger(line.qty) && line.qty > 0)
+          .map(line => ({ ...line, extras: Array.isArray(line.extras) ? line.extras : [] }))
+        : []
+    } catch {
+      return []
+    }
+  })
   const [orders, setOrders] = useState([])
   
   // Customer session
@@ -91,6 +102,42 @@ export function AppProvider({ children }) {
   const [authReady, setAuthReady] = useState(false)
   const [paystackEnabled, setPaystackEnabled] = useState(false)
   const [staff, setStaff] = useState([])
+  const [isNetworkBusy, setIsNetworkBusy] = useState(isApiBusy)
+
+  useEffect(() => {
+    return subscribeApiActivity(busy => setIsNetworkBusy(busy))
+  }, [])
+
+  const refreshAllData = async () => {
+    try {
+      if (staffUser && staffUser.role !== 'customer') {
+        const [{ orders: currentOrders }, { state }] = await Promise.all([
+          api('/admin/orders').catch(() => ({ orders: [] })),
+          api('/admin/state').catch(() => ({ state: {} }))
+        ])
+        if (currentOrders) setOrders(currentOrders)
+        if (state?.menu) setMenu(state.menu)
+        if (state?.cats) setCatsState(state.cats)
+        if (Array.isArray(state?.customers)) setCustomersState(state.customers)
+        if (state?.settings) setSettingsState(prev => ({ ...prev, ...state.settings }))
+      } else {
+        const [{ menu: remoteMenu }, sessionRes] = await Promise.all([
+          api('/menu').catch(() => ({ menu: null })),
+          api('/auth/me').catch(() => ({ user: null }))
+        ])
+        if (Array.isArray(remoteMenu)) setMenu(remoteMenu)
+        if (sessionRes?.user) {
+          setUser(sessionRes.user)
+          setPoints(sessionRes.user.loyaltyPoints || 0)
+          const { orders: mine } = await api('/my/orders').catch(() => ({ orders: [] }))
+          if (mine) setOrders(mine)
+        }
+      }
+      return true
+    } catch {
+      return false
+    }
+  }
 
   const defaultSettings = {
     businessName: "Lady 3D's Catering Services",
@@ -108,6 +155,21 @@ export function AppProvider({ children }) {
 
   const [settings, setSettingsState] = useState(defaultSettings)
 
+  const setBranch = next => {
+    const nextBranch = typeof next === 'function' ? next(branch) : next
+    setBranchState(nextBranch)
+    const matchingZone = deliveryZones.find(zone => zone.branchId === nextBranch && zone.active)
+    if (matchingZone) setSelectedZoneId(matchingZone.id)
+  }
+
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') window.localStorage.setItem('lady3d_cart', JSON.stringify(cart))
+    } catch {
+      // Keep the in-memory basket usable when browser storage is unavailable.
+    }
+  }, [cart])
+
   const setCats = async next => {
     const updated = typeof next === 'function' ? next(cats) : next
     const { value } = await api('/admin/state/cats', { method: 'PUT', body: JSON.stringify({ value: updated }) })
@@ -115,11 +177,27 @@ export function AppProvider({ children }) {
     return value
   }
 
+  const loadCustomers = async () => {
+    try {
+      const res = await api('/admin/customers')
+      if (Array.isArray(res?.customers)) {
+        setCustomersState(res.customers)
+        return res.customers
+      }
+    } catch { /* Fallback to current state */ }
+    return customers
+  }
+
   const setCustomers = async next => {
     const updated = typeof next === 'function' ? next(customers) : next
-    const { value } = await api('/admin/state/customers', { method: 'PUT', body: JSON.stringify({ value: updated }) })
-    setCustomersState(value)
-    return value
+    setCustomersState(updated)
+    try {
+      const { value } = await api('/admin/state/customers', { method: 'PUT', body: JSON.stringify({ value: updated }) })
+      if (Array.isArray(value)) setCustomersState(value)
+      return value
+    } catch {
+      return updated
+    }
   }
 
   const castVote = async option => {
@@ -145,48 +223,62 @@ export function AppProvider({ children }) {
   const toastTimerRef = useRef(null)
 
   const say = (input, options = {}) => {
-    let payload = {}
+    let rawMessage = ''
+    let explicitTitle = options.title
+    let explicitType = options.type
+    let actionLabel = options.actionLabel || ''
+    let actionPath = options.actionPath || ''
+
     if (typeof input === 'string') {
-      const lower = input.toLowerCase()
-      const isError = options.type === 'error' ||
-                      lower.includes('fail') ||
-                      lower.includes('error') || 
-                      lower.includes('invalid') ||
-                      lower.includes('cannot') ||
-                      lower.includes('restricted') ||
-                      lower.includes('incorrect') ||
-                      lower.includes('wrong') ||
-                      lower.includes('denied') ||
-                      lower.includes('unauthorized') ||
-                      lower.includes('not found') ||
-                      lower.includes('required') ||
-                      lower.includes('already exists') ||
-                      lower.includes('too many') ||
-                      lower.includes('could not') ||
-                      lower.includes('unable') ||
-                      lower.includes('expired') ||
-                      lower.includes('not match') ||
-                      lower.includes('disabled') ||
-                      lower.includes('please ')
-      const isBasket = lower.includes('basket') || lower.includes('cart')
-      
-      payload = {
-        id: Date.now() + Math.random(),
-        title: options.title || (isBasket ? 'Added to Basket' : isError ? 'Notice' : 'Success'),
-        message: input,
-        type: options.type || (isBasket ? 'basket' : isError ? 'error' : 'success'),
-        actionLabel: options.actionLabel || (isBasket ? 'View Basket' : ''),
-        actionPath: options.actionPath || (isBasket ? '/cart' : '')
-      }
+      rawMessage = input
+    } else if (input instanceof Error) {
+      rawMessage = input.message || 'An unexpected error occurred'
+      if (!explicitType) explicitType = 'error'
+      if (!explicitTitle) explicitTitle = 'Error'
     } else if (typeof input === 'object' && input !== null) {
-      payload = {
-        id: Date.now() + Math.random(),
-        title: input.title || (input.type === 'basket' ? 'Added to Basket' : input.type === 'error' ? 'Notice' : 'Success'),
-        message: input.message || '',
-        type: input.type || 'success',
-        actionLabel: input.actionLabel || '',
-        actionPath: input.actionPath || ''
-      }
+      rawMessage = input.message || input.error || ''
+      if (input.title) explicitTitle = input.title
+      if (input.type) explicitType = input.type
+      if (input.actionLabel) actionLabel = input.actionLabel
+      if (input.actionPath) actionPath = input.actionPath
+    } else {
+      rawMessage = String(input || '')
+    }
+
+    const lower = rawMessage.toLowerCase()
+    const isError = explicitType === 'error' ||
+                    (input instanceof Error) ||
+                    lower.includes('fail') ||
+                    lower.includes('error') || 
+                    lower.includes('invalid') ||
+                    lower.includes('cannot') ||
+                    lower.includes('restricted') ||
+                    lower.includes('incorrect') ||
+                    lower.includes('wrong') ||
+                    lower.includes('denied') ||
+                    lower.includes('unauthorized') ||
+                    lower.includes('not found') ||
+                    lower.includes('required') ||
+                    lower.includes('already exists') ||
+                    lower.includes('too many') ||
+                    lower.includes('could not') ||
+                    lower.includes('unable') ||
+                    lower.includes('expired') ||
+                    lower.includes('not match') ||
+                    lower.includes('disabled') ||
+                    lower.includes('please ')
+    const isBasket = lower.includes('basket') || lower.includes('cart')
+    
+    const computedType = explicitType || (isBasket ? 'basket' : isError ? 'error' : 'success')
+    const computedTitle = explicitTitle || (isBasket ? 'Added to Basket' : isError ? 'Error' : 'Success')
+
+    const payload = {
+      id: Date.now() + Math.random(),
+      title: computedTitle,
+      message: rawMessage,
+      type: computedType,
+      actionLabel: actionLabel || (isBasket ? 'View Basket' : ''),
+      actionPath: actionPath || (isBasket ? '/cart' : '')
     }
 
     setToast(payload)
@@ -230,6 +322,7 @@ export function AppProvider({ children }) {
         if (!alive) return
         if (session.role === 'customer') {
           setUser(session)
+          if (session.branch === 'cug' || session.branch === 'sunyani') setBranch(session.branch)
           setPoints(session.loyaltyPoints || 0)
           const { orders: mine } = await api('/my/orders')
           if (alive) setOrders(mine || [])
@@ -278,6 +371,9 @@ export function AppProvider({ children }) {
 
   const loginUser = userData => {
     setUser(userData)
+    if (userData.role === 'customer' && (userData.branch === 'cug' || userData.branch === 'sunyani')) {
+      setBranch(userData.branch)
+    }
     setPoints(userData.loyaltyPoints || 0)
     if (userData.role && userData.role !== 'customer') {
       setStaffUser(userData)
@@ -290,6 +386,7 @@ export function AppProvider({ children }) {
   const updateProfile = async profile => {
     const { user: updated } = await api('/auth/profile', { method: 'PUT', body: JSON.stringify(profile) })
     setUser(updated)
+    if (updated.branch === 'cug' || updated.branch === 'sunyani') setBranch(updated.branch)
     setPoints(updated.loyaltyPoints || 0)
     return updated
   }
@@ -549,7 +646,7 @@ export function AppProvider({ children }) {
   const v = {
     menu, setMenu,
     cats, setCats,
-    customers, setCustomers,
+    customers, setCustomers, loadCustomers, setCustomersState,
     branch, setBranch,
     orderType, setOrderType,
     deliveryZones, setDeliveryZones,
@@ -575,7 +672,8 @@ export function AppProvider({ children }) {
     deviceFrame, setDeviceFrame,
     staffUser, staffLogin, staffLogout, authReady, api, paystackEnabled,
     setStatus, markPaid, staff, setStaff,
-    settings, setSettings
+    settings, setSettings,
+    isNetworkBusy, refreshAllData
   }
 
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>
