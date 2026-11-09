@@ -37,11 +37,15 @@ export async function api(path, options = {}) {
       try {
         data = JSON.parse(text)
       } catch {
-        if (response.headers.get('content-type')?.includes('text/html') || /^\s*</.test(text)) {
+        if (response.ok && (response.headers.get('content-type')?.includes('text/html') || /^\s*</.test(text))) {
           throw new Error('The API returned a website page instead of data. Set VITE_API_URL to your deployed backend URL and redeploy the frontend.')
         }
-        const clean = text.trim()
-        data = { error: clean || `Request failed (${response.status})` }
+        if (!response.ok && (response.headers.get('content-type')?.includes('text/html') || /^\s*</.test(text))) {
+          data = { error: `Request failed (${response.status})` }
+        } else {
+          const clean = text.trim()
+          data = { error: clean || `Request failed (${response.status})` }
+        }
       }
     }
     if (!response.ok) {

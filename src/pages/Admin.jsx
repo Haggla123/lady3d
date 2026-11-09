@@ -312,6 +312,9 @@ function Orders() {
   const [statusFilter, setStatusFilter] = useState('active')
   const [searchVal, setSearchVal] = useState('')
   const [soundEnabled, setSoundEnabled] = useState(() => settings?.orderNotificationSound !== false)
+  useEffect(() => {
+    setSoundEnabled(settings?.orderNotificationSound !== false)
+  }, [settings?.orderNotificationSound])
   const [advancingRef, setAdvancingRef] = useState(null)
   const prevOrdersCount = useRef(orders.length)
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, go, money, useApp } from '../store.jsx'
 import { Link, Food, DishCard, BranchPicker, Stars, CategoryIcon, LoadingSpinner } from '../components/ui.jsx'
-import { STATUSES, BRANCHES, CATEGORIES_WITH_ICONS, EXTRAS, buildOrderWhatsAppUrl } from '../data.js'
+import { STATUSES, BRANCHES, CATEGORIES_WITH_ICONS, EXTRAS, buildOrderWhatsAppUrl, getBranchWhatsApp } from '../data.js'
 
 // 1. Onboarding / Get Started Sequence (SnapEats Screen 1)
 export function Onboarding({ onStart, onSignIn, onSignUp }) {

@@ -99,6 +99,9 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
   const [kitchenFilter, setKitchenFilter] = useState('active')
   const [searchOrder, setSearchOrder] = useState('')
   const [soundEnabled, setSoundEnabled] = useState(() => settings?.orderNotificationSound !== false)
+  useEffect(() => {
+    setSoundEnabled(settings?.orderNotificationSound !== false)
+  }, [settings?.orderNotificationSound])
 
   // Manager Meal Add / Edit state
   const [showAddModal, setShowAddModal] = useState(false)

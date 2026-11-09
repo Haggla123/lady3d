@@ -231,10 +231,10 @@ export function AppProvider({ children }) {
   }
 
   const setSettings = async newSettings => {
+    await api('/admin/state/settings', { method: 'PUT', body: JSON.stringify({ value: newSettings }) })
     setSettingsState(newSettings)
     if (newSettings?.currency) setCurrencySymbol(newSettings.currency)
     setActiveSettings(newSettings)
-    await api('/admin/state/settings', { method: 'PUT', body: JSON.stringify({ value: newSettings }) })
     return newSettings
   }
 

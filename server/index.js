@@ -131,7 +131,7 @@ async function getWeeklyVotes() {
     const existingCounts = state.value?.counts || { 'Waakye Special': 0, 'Jollof & Chicken': 0, 'Fufu & Light Soup': 0 }
     const resetCounts = Object.fromEntries(Object.keys(existingCounts).map(k => [k, 0]))
     const rolledOver = await AppState.findOneAndUpdate(
-      { key: 'votes' },
+      { key: 'votes', 'value.weekOf': state.value?.weekOf },
       { $set: { value: { weekOf, counts: resetCounts } } },
       { new: true }
     )
@@ -322,7 +322,9 @@ app.get('/api/public/bootstrap', asyncRoute(async (_req, res) => {
     loyaltyRules: loyaltyRules?.value || { spendPerPoint: 10, rewardThreshold: 50, promoDiscount: 20 },
     votes: votes?.value?.counts || {},
     reviews: reviews.map(review => ({ ...review, id: String(review._id) })),
-    settings: settingsState?.value ? { ...defaultSettings, ...settingsState.value } : defaultSettings
+    settings: settingsState?.value
+      ? { ...defaultSettings, ...Object.fromEntries(Object.keys(defaultSettings).filter(key => Object.hasOwn(settingsState.value, key)).map(key => [key, settingsState.value[key]])) }
+      : defaultSettings
   })
 }))
 

@@ -198,6 +198,9 @@ export default function KitchenDashboard({ branchId: propBranch = 'cug', staffUs
   const [availability, setAvailability] = useState([])
   const [menuItems, setMenuItems] = useState([])
   const [soundEnabled, setSoundEnabled] = useState(() => settings?.orderNotificationSound !== false)
+  useEffect(() => {
+    setSoundEnabled(settings?.orderNotificationSound !== false)
+  }, [settings?.orderNotificationSound])
   const [activeTab, setActiveTab] = useState('queue') // 'queue' | 'stock'
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
