@@ -21,6 +21,7 @@ import {
   AppState
 } from './models.js'
 import { clearSession, issueSession, optionalAuth, requireAuth, requireRoles, requireStaff } from './auth.js'
+import { sendVerificationEmail, sendPasswordResetEmail, sendOrderConfirmationEmail, sendWelcomeEmail, sendOrderStatusEmail, sendCateringInquiryEmail } from './services/email.js'
 
 const requiredEnv = ['MONGODB_URI', 'JWT_SECRET']
 const missing = requiredEnv.filter(key => !process.env[key])
@@ -62,6 +63,7 @@ app.use('/api/auth', rateLimit({
 app.use('/api/orders', rateLimit({ windowMs: 60 * 1000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false }))
 app.use('/api/reviews', rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: 'draft-8', legacyHeaders: false }))
 app.use('/api/votes', rateLimit({ windowMs: 60 * 1000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false }))
+app.use('/api/catering/inquiries', rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: 'draft-8', legacyHeaders: false }))
 
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
 const publicUser = user => ({
@@ -75,7 +77,8 @@ const publicUser = user => ({
   assignedBranch: user.assignedBranch,
   active: user.active !== false,
   loyaltyPoints: user.loyaltyPoints || 0,
-  welcomeVoucherUsed: Boolean(user.welcomeVoucherUsedAt)
+  welcomeVoucherUsed: Boolean(user.welcomeVoucherUsedAt),
+  emailVerified: user.role !== 'customer' || Boolean(user.emailVerified)
 })
 const authBody = z.object({
   email: z.string().trim().min(2, 'Enter your email address or username').max(254),
@@ -350,17 +353,137 @@ app.post('/api/auth/signup', asyncRoute(async (req, res) => {
   const email = body.email.toLowerCase()
   if (await User.exists({ email })) return res.status(409).json({ error: 'An account with this email already exists' })
 
+  const emailVerificationToken = randomBytes(32).toString('hex')
+  const emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000)
+
   const user = await User.create({
     name: body.name,
     email,
     phone: body.phone,
     assignedBranch: body.branch || 'cug',
     passwordHash: await bcrypt.hash(body.password, 12),
-    role: 'customer'
+    role: 'customer',
+    emailVerified: false,
+    emailVerificationToken,
+    emailVerificationExpires
   })
+
+  // Fire and forget verification email via Brevo
+  sendVerificationEmail({ name: user.name, email: user.email, token: emailVerificationToken, req })
+    .catch(err => console.error('[Signup Verification Email Failed]:', err.message))
+  sendWelcomeEmail({ name: user.name, email: user.email })
+    .catch(err => console.error('[Signup Welcome Email Failed]:', err.message))
 
   issueSession(res, user)
   res.status(201).json({ user: publicUser(user) })
+}))
+
+app.post('/api/catering/inquiries', asyncRoute(async (req, res) => {
+  const inquiry = z.object({
+    name: z.string().trim().min(2).max(100),
+    email: z.string().trim().email().max(254),
+    phone: z.string().trim().min(7).max(30),
+    eventDetails: z.string().trim().min(10).max(2000)
+  }).parse(req.body)
+  const result = await sendCateringInquiryEmail(inquiry)
+  if (!result.success && !result.simulated) return res.status(502).json({ error: 'Could not send your inquiry right now. Please try again.' })
+  res.status(202).json({ success: true, message: 'Your catering inquiry has been sent. We’ll be in touch soon.' })
+}))
+
+// Email Verification
+app.post('/api/auth/verify-email', asyncRoute(async (req, res) => {
+  const { token, email } = z.object({
+    token: z.string().trim().min(10).max(128),
+    email: z.string().trim().email().toLowerCase()
+  }).parse(req.body)
+
+  const user = await User.findOne({
+    email,
+    emailVerificationToken: token,
+    emailVerificationExpires: { $gt: new Date() }
+  })
+
+  if (!user) {
+    return res.status(400).json({ error: 'Invalid or expired verification link. Please request a new verification email.' })
+  }
+
+  user.emailVerified = true
+  user.emailVerificationToken = undefined
+  user.emailVerificationExpires = undefined
+  await user.save()
+
+  issueSession(res, user)
+  res.json({ success: true, message: 'Email verified successfully! Welcome to Lady 3D’s.', user: publicUser(user) })
+}))
+
+app.post('/api/auth/resend-verification', asyncRoute(async (req, res) => {
+  const { email } = z.object({
+    email: z.string().trim().email().toLowerCase()
+  }).parse(req.body)
+
+  const user = await User.findOne({ email })
+  if (!user) {
+    return res.json({ success: true, message: 'If an account exists with that email, a verification link has been sent.' })
+  }
+
+  if (user.emailVerified) {
+    return res.status(400).json({ error: 'This email is already verified. You can sign in directly.' })
+  }
+
+  const token = randomBytes(32).toString('hex')
+  user.emailVerificationToken = token
+  user.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000)
+  await user.save()
+
+  sendVerificationEmail({ name: user.name, email: user.email, token, req })
+    .catch(err => console.error('[Resend Verification Email Failed]:', err.message))
+
+  res.json({ success: true, message: 'A verification link has been sent to your email.' })
+}))
+
+// Password Reset Flow
+app.post('/api/auth/forgot-password', asyncRoute(async (req, res) => {
+  const { email } = z.object({
+    email: z.string().trim().email().toLowerCase()
+  }).parse(req.body)
+
+  const user = await User.findOne({ email, active: { $ne: false } })
+  if (user) {
+    const token = randomBytes(32).toString('hex')
+    user.resetPasswordToken = token
+    user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
+    await user.save()
+
+    sendPasswordResetEmail({ name: user.name, email: user.email, token, req })
+      .catch(err => console.error('[Password Reset Email Failed]:', err.message))
+  }
+
+  res.json({ success: true, message: 'If an account exists with that email, password reset instructions have been sent.' })
+}))
+
+app.post('/api/auth/reset-password', asyncRoute(async (req, res) => {
+  const { email, token, newPassword } = z.object({
+    email: z.string().trim().email().toLowerCase(),
+    token: z.string().trim().min(10).max(128),
+    newPassword: z.string().min(8, 'New password must be at least 8 characters').max(128)
+  }).parse(req.body)
+
+  const user = await User.findOne({
+    email,
+    resetPasswordToken: token,
+    resetPasswordExpires: { $gt: new Date() }
+  })
+
+  if (!user) {
+    return res.status(400).json({ error: 'Invalid or expired password reset link. Please request a new one.' })
+  }
+
+  user.passwordHash = await bcrypt.hash(newPassword, 12)
+  user.resetPasswordToken = undefined
+  user.resetPasswordExpires = undefined
+  await user.save()
+
+  res.json({ success: true, message: 'Your password has been reset successfully. You can now sign in.' })
 }))
 
 app.post('/api/auth/login', asyncRoute(async (req, res) => {
@@ -709,6 +832,7 @@ app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
     deliveryDetails: {
       zoneId: zoneRecord?.id,
       zoneName: zoneRecord?.name || 'Local Delivery',
+      estimatedMinutes: zoneRecord?.estimatedMinutes,
       address: input.address || '',
       instructions: input.instructions || '',
       phone: input.phone
@@ -781,6 +905,8 @@ app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
   }
 
   // Cash / Pay on collection: Order is automatically confirmed and sent to kitchen queue!
+  sendOrderConfirmationEmail({ order, user: req.user, req })
+    .catch(err => console.error('[Order Confirmation Email Failed]:', err.message))
   res.status(201).json({ order })
 }))
 
@@ -822,7 +948,10 @@ async function applyPaystackResult(reference) {
       },
       { new: true }
     )
-    if (updated) await commitOrderStock(updated.branch, updated.items)
+    if (updated) {
+      await commitOrderStock(updated.branch, updated.items)
+      sendOrderConfirmationEmail({ order: updated }).catch(err => console.error('[Paid Order Confirmation Email Failed]:', err.message))
+    }
     return { order: updated || await Order.findById(order._id).lean(), changed: Boolean(updated) }
   }
 
@@ -907,6 +1036,7 @@ app.patch('/api/kitchen/orders/:ref/status', requireAuth, requireRoles('Owner', 
   }
   const order = await Order.findOne(filter)
   if (!order) return res.status(404).json({ error: 'Order not found' })
+  let readyEmailStatus = null
 
   if (action === 'start_cooking') {
     if (!['confirmed', 'preparing'].includes(order.orderStatus) || order.paymentStatus === 'pending' || order.paymentStatus === 'failed') return res.status(409).json({ error: 'Order must be confirmed and paid or cash-on-delivery before cooking.' })
@@ -922,6 +1052,7 @@ app.patch('/api/kitchen/orders/:ref/status', requireAuth, requireRoles('Owner', 
     })
   } else if (action === 'mark_ready') {
     if (!['preparing', 'ready_for_collection', 'ready_for_dispatch'].includes(order.orderStatus)) return res.status(409).json({ error: 'Start cooking before marking this order ready.' })
+    const previousStatus = order.orderStatus
     if (order.orderType === 'collection') {
       order.orderStatus = 'ready_for_collection'
       order.status = 3
@@ -938,6 +1069,9 @@ app.patch('/api/kitchen/orders/:ref/status', requireAuth, requireRoles('Owner', 
       note: order.orderType === 'collection' ? 'Food packed and ready for customer pickup' : 'Food packed and ready for rider dispatch',
       updatedBy: req.user.name
     })
+    if (previousStatus !== order.orderStatus) {
+      readyEmailStatus = order.orderStatus
+    }
   } else if (action === 'complete_pickup') {
     if (order.orderType !== 'collection') return res.status(400).json({ error: 'Only collection orders can be marked collected at the kitchen counter' })
     if (order.orderStatus !== 'ready_for_collection') return res.status(409).json({ error: 'Only ready collection orders can be completed.' })
@@ -960,6 +1094,8 @@ app.patch('/api/kitchen/orders/:ref/status', requireAuth, requireRoles('Owner', 
   }
 
   await order.save()
+  if (readyEmailStatus) sendOrderStatusEmail({ order, status: readyEmailStatus, req })
+    .catch(err => console.error('[Order Ready Email Failed]:', err.message))
   if (action === 'complete_pickup') {
     try { await awardLoyaltyPoints(order) }
     catch (error) { console.error('Failed to award loyalty points for completed pickup', error) }
@@ -1072,6 +1208,8 @@ app.patch('/api/delivery/orders/:ref/pickup', requireAuth, requireRoles('Owner',
     updatedBy: req.user.name
   })
   await order.save()
+  sendOrderStatusEmail({ order, status: 'out_for_delivery', req })
+    .catch(err => console.error('[Dispatch Email Failed]:', err.message))
   res.json({ order })
 }))
 

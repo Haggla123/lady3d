@@ -231,10 +231,14 @@ export function AppProvider({ children }) {
   }
 
   const setSettings = async newSettings => {
+    const previousSettings = settings
     await api('/admin/state/settings', { method: 'PUT', body: JSON.stringify({ value: newSettings }) })
-    setSettingsState(newSettings)
-    if (newSettings?.currency) setCurrencySymbol(newSettings.currency)
-    setActiveSettings(newSettings)
+    setSettingsState(currentSettings => Object.fromEntries(
+      Object.keys({ ...currentSettings, ...newSettings }).map(key => [
+        key,
+        currentSettings[key] === previousSettings[key] ? newSettings[key] ?? currentSettings[key] : currentSettings[key]
+      ])
+    ))
     return newSettings
   }
 

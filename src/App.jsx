@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { go, money, useApp, useHash } from './store.jsx'
 import { Link, Wordmark, BranchPicker, BottomNavBar, MobileTopNav, FoodDetailModal, ActionToast, GlobalNetworkBar, LoadingSpinner, ErrorBoundary } from './components/ui.jsx'
-import { Onboarding, Home, Menu, FoodPage, Cart, Checkout, OrderSuccess, Track, Account, Community, SignIn, SignUp } from './pages/Customer.jsx'
+import { Onboarding, Home, Menu, FoodPage, Cart, Checkout, OrderSuccess, Track, Account, Community, SignIn, SignUp, VerifyEmail, ResetPassword } from './pages/Customer.jsx'
 import Admin from './pages/Admin.jsx'
 import BranchDashboard from './pages/BranchDashboard.jsx'
 import KitchenDashboard from './pages/kitchen/KitchenDashboard.jsx'
@@ -203,6 +203,8 @@ export default function App() {
   else if (seg[0] === 'account') pageContent = <Account />
   else if (seg[0] === 'login') pageContent = <SignIn />
   else if (seg[0] === 'signup') pageContent = <SignUp />
+  else if (seg[0] === 'verify-email') pageContent = <VerifyEmail />
+  else if (seg[0] === 'reset-password' || seg[0] === 'forgot-password') pageContent = <ResetPassword />
   else if (seg[0] === 'community') pageContent = <Community />
   else if (seg[0] === 'dashboards' || seg[0] === 'portals') {
     if (!staffUser) pageContent = <StaffLoginPage />

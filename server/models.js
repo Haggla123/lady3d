@@ -119,6 +119,7 @@ const OrderSchema = new Schema({
   deliveryDetails: {
     zoneId: String,
     zoneName: String,
+    estimatedMinutes: String,
     address: String,
     instructions: String,
     phone: String
@@ -188,7 +189,12 @@ const UserSchema = new Schema({
   assignedBranch: { type: String, enum: ['all', 'cug', 'sunyani'] },
   welcomeVoucherUsedAt: Date,
   loyaltyPoints: { type: Number, default: 0, min: 0 },
-  active: { type: Boolean, default: true }
+  active: { type: Boolean, default: true },
+  emailVerified: { type: Boolean, default: false },
+  emailVerificationToken: String,
+  emailVerificationExpires: Date,
+  resetPasswordToken: String,
+  resetPasswordExpires: Date
 }, { timestamps: true })
 
 // Branch & Service Configuration

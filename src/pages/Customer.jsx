@@ -1011,12 +1011,10 @@ export function Checkout() {
                 />
               </label>
 
-              {f.pay === 'momo' && (
-                <label className="input-field-wrap">
-                  <span>Email for Paystack receipt <b className="required-field-mark" aria-hidden="true">*</b></span>
-                  <input type="email" autoComplete="email" required aria-required="true" value={f.email || ''} onChange={e => setF({ ...f, email: e.target.value })} placeholder="you@example.com" />
-                </label>
-              )}
+              <label className="input-field-wrap">
+                <span>Email for receipt and order updates{f.pay === 'momo' && <b className="required-field-mark" aria-hidden="true"> *</b>}</span>
+                <input type="email" autoComplete="email" required={f.pay === 'momo'} aria-required={f.pay === 'momo'} value={f.email || ''} onChange={e => setF({ ...f, email: e.target.value })} placeholder="you@example.com" />
+              </label>
 
               {orderType === 'delivery' && (
                 <label className="input-field-wrap">
@@ -1685,10 +1683,8 @@ export function SignIn() {
             <button
               type="button"
               className="btn-forgot-pass"
-              onClick={() => say('Password recovery is not configured yet. Contact Lady 3D’s support team.')}
-            >
-              Forgot password?
-            </button>
+              onClick={() => go('/forgot-password')}
+            >Forgot password?</button>
           </div>
 
           <button type="submit" className="btn-auth-submit" disabled={busy}>
@@ -1764,7 +1760,7 @@ export function SignUp() {
         password
       })
     })
-      .then(({ user: account }) => { loginUser(account); say('Your account is ready.'); go('/') })
+      .then(({ user: account }) => { loginUser(account); say('Account created. Check your email to verify your address and activate WELCOME20.'); go('/') })
       .catch(error => say(error.message, { type: 'error', title: 'Registration Failed' }))
       .finally(() => setBusy(false))
   }
@@ -1883,6 +1879,89 @@ export function SignUp() {
       </div>
     </div>
   )
+}
+
+const getEmailLinkParams = () => {
+  if (typeof window === 'undefined') return new URLSearchParams()
+  const params = new URLSearchParams(window.location.search)
+  const hashQuery = window.location.hash.split('?')[1] || ''
+  new URLSearchParams(hashQuery).forEach((value, key) => params.set(key, value))
+  return params
+}
+
+export function VerifyEmail() {
+  const { api, loginUser } = useApp()
+  const [message, setMessage] = useState('Verifying your email address…')
+  const [failed, setFailed] = useState(false)
+  const [resendEmail, setResendEmail] = useState(getEmailLinkParams().get('email') || '')
+  const [resendSent, setResendSent] = useState(false)
+  const didVerify = useRef(false)
+
+  useEffect(() => {
+    if (didVerify.current) return
+    didVerify.current = true
+    const params = getEmailLinkParams()
+    const token = params.get('token')
+    const email = params.get('email')
+    if (email) setResendEmail(email)
+    if (!token || !email) {
+      setFailed(true)
+      setMessage('This verification link is incomplete. Request a new link from your account.')
+      return
+    }
+    api('/auth/verify-email', { method: 'POST', body: JSON.stringify({ token, email }) })
+      .then(({ user }) => {
+        loginUser(user)
+        setMessage('Your email is verified. WELCOME20 is ready for your first order.')
+      })
+      .catch(error => {
+        setFailed(true)
+        setMessage(error.message || 'This verification link is invalid or expired.')
+      })
+  }, [api, loginUser])
+
+  const resend = async event => {
+    event.preventDefault()
+    try {
+      const result = await api('/auth/resend-verification', { method: 'POST', body: JSON.stringify({ email: resendEmail }) })
+      setResendSent(true)
+      setMessage(result.message || 'If your account needs verification, a new link has been sent.')
+    } catch (error) {
+      setMessage(error.message || 'Could not send a new verification link.')
+    }
+  }
+
+  return <div className="auth-modern-screen"><div className="auth-card-container"><h1 className="auth-title">Email verification</h1><p className="auth-subtitle">{message}</p>{failed && !resendSent && <form className="auth-form-fields" onSubmit={resend}><label className="input-field-wrap"><span>Account email</span><input type="email" required value={resendEmail} onChange={event => setResendEmail(event.target.value)} /></label><button type="submit" className="btn-auth-submit">Send a new verification link</button></form>}{failed && <Link to="/signup" className="auth-switch-link">Back to sign up</Link>}{!failed && <Link to="/menu" className="btn-auth-submit">Browse Menu</Link>}</div></div>
+}
+
+export function ResetPassword() {
+  const { api, say } = useApp()
+  const params = getEmailLinkParams()
+  const token = params.get('token') || ''
+  const [email, setEmail] = useState(params.get('email') || '')
+  const [password, setPassword] = useState('')
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async event => {
+    event.preventDefault()
+    setBusy(true)
+    try {
+      if (token) {
+        const result = await api('/auth/reset-password', { method: 'POST', body: JSON.stringify({ email, token, newPassword: password }) })
+        setMessage(result.message || 'Password updated. You can now sign in.')
+      } else {
+        const result = await api('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) })
+        setMessage(result.message || 'If an account exists, reset instructions have been sent.')
+      }
+    } catch (error) {
+      say(error.message || 'Password reset failed.', { type: 'error' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return <div className="auth-modern-screen"><div className="auth-card-container"><h1 className="auth-title">{token ? 'Choose a new password' : 'Reset your password'}</h1><p className="auth-subtitle">{token ? 'Set a new password for your Lady 3D account.' : 'Enter your account email and we’ll send you a secure reset link.'}</p>{message ? <p role="status">{message}</p> : <form className="auth-form-fields" onSubmit={submit}><label className="input-field-wrap"><span>Email address</span><input type="email" autoComplete="email" required value={email} onChange={event => setEmail(event.target.value)} /></label>{token && <label className="input-field-wrap"><span>New password</span><input type="password" autoComplete="new-password" minLength={8} required value={password} onChange={event => setPassword(event.target.value)} /></label>}<button className="btn-auth-submit" type="submit" disabled={busy}>{busy ? 'Please wait…' : token ? 'Update Password' : 'Send Reset Link'}</button></form>}<Link to="/login" className="auth-switch-link">Back to sign in</Link></div></div>
 }
 
 // 10. Modern Account / Profile Screen (Bon Appétit Screen 5)
@@ -2247,7 +2326,23 @@ export function Account() {
 // 11. Campus & Community Page
 export function Community() {
   const { votes, castVote, voted, reviews, branch, setBranch, say, refreshAllData, isNetworkBusy, settings } = useApp()
+  const [cateringInquiry, setCateringInquiry] = useState({ name: '', email: '', phone: '', eventDetails: '' })
+  const [inquirySending, setInquirySending] = useState(false)
   const tot = Object.values(votes).reduce((a, b) => a + b, 0)
+
+  const submitCateringInquiry = async event => {
+    event.preventDefault()
+    setInquirySending(true)
+    try {
+      const result = await api('/catering/inquiries', { method: 'POST', body: JSON.stringify(cateringInquiry) })
+      say(result.message || 'Your catering inquiry has been sent.')
+      setCateringInquiry({ name: '', email: '', phone: '', eventDetails: '' })
+    } catch (error) {
+      say(error.message || 'Could not send your inquiry. Please try again.', { type: 'error' })
+    } finally {
+      setInquirySending(false)
+    }
+  }
 
   return (
     <div className="community-modern-page">
@@ -2458,6 +2553,14 @@ export function Community() {
               Kitchen Hotline: <b>{settings?.generalPhone || '027 691 3089'}</b> / <b>{settings?.cugWhatsapp || '053 129 9243'}</b> • Book Events: <b>{settings?.cateringPhone || '024 465 0474'}</b>
             </span>
           </div>
+          <form onSubmit={submitCateringInquiry} style={{ display: 'grid', gap: '12px', marginTop: '22px', maxWidth: '620px' }}>
+            <h3 style={{ margin: 0 }}>Request an event catering quote</h3>
+            <label className="input-field-wrap"><span>Your name</span><input required minLength={2} maxLength={100} value={cateringInquiry.name} onChange={e => setCateringInquiry({ ...cateringInquiry, name: e.target.value })} /></label>
+            <label className="input-field-wrap"><span>Email</span><input required type="email" maxLength={254} value={cateringInquiry.email} onChange={e => setCateringInquiry({ ...cateringInquiry, email: e.target.value })} /></label>
+            <label className="input-field-wrap"><span>Phone</span><input required type="tel" minLength={7} maxLength={30} value={cateringInquiry.phone} onChange={e => setCateringInquiry({ ...cateringInquiry, phone: e.target.value })} /></label>
+            <label className="input-field-wrap"><span>Event date, guest count, location, and catering needs</span><textarea required minLength={10} maxLength={2000} rows={4} value={cateringInquiry.eventDetails} onChange={e => setCateringInquiry({ ...cateringInquiry, eventDetails: e.target.value })} /></label>
+            <button className="btn-order-cta" type="submit" disabled={inquirySending}>{inquirySending ? 'Sending…' : 'Send Catering Inquiry'}</button>
+          </form>
         </div>
       </div>
 
