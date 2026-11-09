@@ -67,7 +67,7 @@ app.use('/api/catering/inquiries', rateLimit({ windowMs: 60 * 60 * 1000, limit: 
 
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
 const publicUser = user => ({
-  id: user.id,
+  id: String(user._id ?? user.id),
   name: user.name,
   email: user.email,
   phone: user.phone,
@@ -347,7 +347,7 @@ app.post('/api/auth/signup', asyncRoute(async (req, res) => {
     phone: z.string().trim().regex(/^\+?[0-9 ()-]{9,18}$/, 'Enter a valid phone number (at least 9 digits)'),
     branch: z.enum(['cug', 'sunyani']).optional(),
     email: z.string().trim().email('Enter a valid email address').max(254),
-    password: z.string().min(8, 'Password must contain at least 8 characters').max(128)
+    password: z.string().min(6, 'Password must contain at least 6 characters').max(128)
   }).parse(req.body)
 
   const email = body.email.toLowerCase()
@@ -465,7 +465,7 @@ app.post('/api/auth/reset-password', asyncRoute(async (req, res) => {
   const { email, token, newPassword } = z.object({
     email: z.string().trim().email().toLowerCase(),
     token: z.string().trim().min(10).max(128),
-    newPassword: z.string().min(8, 'New password must be at least 8 characters').max(128)
+    newPassword: z.string().min(6, 'New password must be at least 6 characters').max(128)
   }).parse(req.body)
 
   const user = await User.findOne({
@@ -537,7 +537,7 @@ app.post('/api/auth/change-password', requireAuth, asyncRoute(async (req, res) =
   if (req.user.role !== 'customer') return res.status(403).json({ error: 'Customer account access required' })
   const body = z.object({
     currentPassword: z.string().min(1).max(128),
-    newPassword: z.string().min(10).max(128)
+    newPassword: z.string().min(6).max(128)
   }).parse(req.body)
   const user = await User.findById(req.user.id)
   if (!user || !(await bcrypt.compare(body.currentPassword, user.passwordHash))) {
@@ -1357,8 +1357,8 @@ app.patch('/api/admin/branches/:id/controls', requireRoles('Owner', 'Manager'), 
   if (body.pauseReason !== undefined) branch.pauseReason = body.pauseReason
   if (typeof body.maxActiveOrders === 'number') branch.maxActiveOrders = body.maxActiveOrders
   if (body.notice !== undefined) branch.notice = body.notice
-  if (typeof body.allowCollection === 'boolean') branch.serviceSettings.allowCollection = body.allowCollection
-  if (typeof body.allowDelivery === 'boolean') branch.serviceSettings.allowDelivery = body.allowDelivery
+  if (typeof body.allowCollection === 'boolean') branch.set('serviceSettings.allowCollection', body.allowCollection)
+  if (typeof body.allowDelivery === 'boolean') branch.set('serviceSettings.allowDelivery', body.allowDelivery)
 
   await branch.save()
   res.json({ branch })
@@ -1426,7 +1426,7 @@ app.post('/api/admin/staff', requireRoles('Owner'), asyncRoute(async (req, res) 
     phone: z.string().regex(/^\+?[0-9 ()-]{9,18}$/),
     role: z.enum(['Manager', 'Kitchen', 'Driver', 'Cashier']),
     branch: z.enum(['cug', 'sunyani', 'all']),
-    password: z.string().min(8).max(128)
+    password: z.string().min(6).max(128)
   }).parse(req.body)
 
   const email = body.email.toLowerCase()
@@ -1443,14 +1443,15 @@ app.post('/api/admin/staff', requireRoles('Owner'), asyncRoute(async (req, res) 
 }))
 
 app.patch('/api/admin/staff/:id', requireRoles('Owner'), asyncRoute(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid staff account ID' })
   const body = z.object({
     name: z.string().trim().min(2).max(100).optional(),
-    email: z.string().email().max(254).optional(),
-    phone: z.string().regex(/^\+?[0-9 ()-]{9,18}$/).optional(),
+    email: z.string().trim().email().max(254).optional(),
+    phone: z.string().trim().regex(/^\+?[0-9 ()-]{9,18}$/).optional(),
     active: z.boolean().optional(),
     role: z.enum(['Manager', 'Kitchen', 'Driver', 'Cashier']).optional(),
     branch: z.enum(['cug', 'sunyani', 'all']).optional(),
-    password: z.string().min(8).max(128).optional()
+    password: z.string().min(6).max(128).optional()
   }).parse(req.body)
 
   const update = {}
@@ -1462,7 +1463,11 @@ app.patch('/api/admin/staff/:id', requireRoles('Owner'), asyncRoute(async (req, 
   if (body.branch) update.assignedBranch = body.branch
   if (body.password) update.passwordHash = await bcrypt.hash(body.password, 12)
 
-  const user = await User.findOneAndUpdate({ _id: req.params.id, role: { $ne: 'customer' } }, update, { new: true }).select('-passwordHash')
+  const user = await User.findOneAndUpdate(
+    { _id: req.params.id, role: { $ne: 'customer' } },
+    { $set: update },
+    { new: true }
+  ).select('-passwordHash')
   if (!user) return res.status(404).json({ error: 'Staff account not found' })
   res.json({ staff: publicUser(user) })
 }))

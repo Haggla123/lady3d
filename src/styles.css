@@ -7465,6 +7465,86 @@ th {
   margin-top: 10px;
 }
 
+.staff-create-panel {
+  margin: 18px 0 24px;
+  padding: 22px;
+  border: 1px solid #ead9d6;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fffafa, #fff 72%);
+  box-shadow: 0 8px 24px rgba(80, 20, 27, 0.06);
+}
+
+.staff-create-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.staff-create-panel-head h4 {
+  margin: 0;
+  color: #292323;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.staff-create-panel-head p {
+  margin: 5px 0 0;
+  color: #746b6b;
+  font-size: 13px;
+}
+
+.staff-create-lockup {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #f8e9e8;
+  color: #80141b;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  white-space: nowrap;
+}
+
+.staff-create-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.staff-create-field {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+}
+
+.staff-create-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding-top: 5px;
+}
+
+.staff-row-actions { display: flex; flex-wrap: wrap; gap: 6px; min-width: 130px; }
+.staff-inline-input { box-sizing: border-box; width: 100%; min-width: 105px; padding: 8px 9px; border: 1px solid #a8cbb2; border-radius: 8px; background: #fff; color: #183b27; font: inherit; }
+.staff-password-input { min-width: 155px; }
+.staff-preview-notice { margin: 0 0 10px; padding: 10px 12px; border: 1px solid #f0d18d; border-radius: 9px; background: #fff9e9; color: #72520d; font-size: 13px; }
+.staff-status-pill { display: inline-flex; width: fit-content; align-items: center; padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 800; }
+.staff-status-pill.is-active { background: #e8f7ec; color: #16723a; }
+.staff-status-pill.is-disabled { background: #f1eeee; color: #716969; }
+
+@media (max-width: 900px) {
+  .staff-create-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .staff-create-panel { padding: 16px; }
+  .staff-create-grid { grid-template-columns: 1fr; }
+  .staff-create-actions { grid-column: auto; flex-direction: column-reverse; align-items: stretch; }
+}
+
 .btn-pbd-action {
   background: #80141B;
   color: #FFFFFF;

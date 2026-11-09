@@ -1341,21 +1341,30 @@ function Customers() {
 }
 
 // 7. Staff & Roles Management Tab (Adding Staff, Changing Roles, View As)
+const STAFF_PREVIEW_ROWS = [
+  { id: 'sample-staff-cug-manager', name: 'Sample CUG Manager', email: 'cug.manager@example.test', phone: '024 000 0001', role: 'Manager', branch: 'cug', active: true, isMock: true },
+  { id: 'sample-staff-sunyani-kitchen', name: 'Sample Sunyani Kitchen Lead', email: 'sunyani.kitchen@example.test', phone: '024 000 0002', role: 'Kitchen', branch: 'sunyani', active: true, isMock: true }
+]
+
 function Staff() {
   const { say, api } = useApp()
   const [staff, setStaff] = useState([])
   const [newStaff, setNewStaff] = useState({ name: '', email: '', password: '', role: 'Cashier', branch: 'cug', phone: '' })
+  const [showAddStaff, setShowAddStaff] = useState(false)
   const [editingStaff, setEditingStaff] = useState(null)
   const [loadingStaff, setLoadingStaff] = useState(false)
   const [addingStaff, setAddingStaff] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
+  const [updatingStaffId, setUpdatingStaffId] = useState(null)
 
   const loadStaff = async () => {
     setLoadingStaff(true)
     try {
       const { staff: rows } = await api('/admin/staff')
-      setStaff(rows || [])
+      const savedStaff = (rows || []).map(row => ({ ...row, id: String(row.id ?? row._id ?? '') })).filter(row => row.id)
+      setStaff(savedStaff.length ? savedStaff : import.meta.env.DEV ? STAFF_PREVIEW_ROWS : [])
     } catch (error) {
+      if (import.meta.env.DEV) setStaff(STAFF_PREVIEW_ROWS)
       say(error.message, { type: 'error' })
     } finally {
       setLoadingStaff(false)
@@ -1365,12 +1374,13 @@ function Staff() {
   useEffect(() => { loadStaff() }, [])
 
   const handleAddStaff = async () => {
-    if (!newStaff.name.trim() || !newStaff.email.trim() || !newStaff.phone.trim() || newStaff.password.length < 10) return say('Enter the staff details and a password with at least 10 characters', { type: 'error' })
+    if (!newStaff.name.trim() || !newStaff.email.trim() || !newStaff.phone.trim() || newStaff.password.length < 6) return say('Enter the staff details and a password with at least 6 characters', { type: 'error' })
     setAddingStaff(true)
     try {
       const { staff: added } = await api('/admin/staff', { method: 'POST', body: JSON.stringify(newStaff) })
-      setStaff(rows => [added, ...rows])
+      setStaff(rows => [added, ...rows.filter(row => !row.isMock)])
       setNewStaff({ name: '', email: '', password: '', role: 'Cashier', branch: 'cug', phone: '' })
+      setShowAddStaff(false)
       say(`Staff account created for ${added.name}.`)
     } catch (error) {
       say(error.message, { type: 'error' })
@@ -1379,36 +1389,50 @@ function Staff() {
     }
   }
 
-  const handleDeleteStaff = (id, name) => {
-    if (confirm(`Remove staff member "${name}"?`)) {
-      api(`/admin/staff/${id}`, { method: 'PATCH', body: JSON.stringify({ active: false }) })
-        .then(({ staff: updated }) => setStaff(rows => rows.map(row => row.id === id ? updated : row)))
-        .then(() => say(`Disabled ${name}'s sign-in.`))
-        .catch(error => say(error.message))
+  const handleSetStaffActive = async member => {
+    if (member.active && !confirm(`Disable ${member.name}'s sign-in?`)) return
+    if (member.isMock) {
+      setStaff(rows => rows.map(row => row.id === member.id ? { ...row, active: !row.active } : row))
+      say('Sample preview updated locally; no account was changed.')
+      return
     }
-  }
-
-  const handleToggleActive = (member) => {
-    api(`/admin/staff/${member.id}`, { method: 'PATCH', body: JSON.stringify({ active: !member.active }) })
-      .then(({ staff: updated }) => setStaff(rows => rows.map(row => row.id === member.id ? updated : row)))
-      .catch(error => say(error.message))
+    setUpdatingStaffId(member.id)
+    try {
+      const { staff: updated } = await api(`/admin/staff/${encodeURIComponent(member.id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ active: !member.active })
+      })
+      setStaff(rows => rows.map(row => row.id === member.id ? { ...updated, id: String(updated.id ?? updated._id ?? member.id) } : row))
+      say(member.active ? `Disabled ${member.name}'s sign-in.` : `Enabled ${member.name}'s sign-in.`)
+    } catch (error) {
+      say(error.message || 'Could not update this staff member.', { type: 'error' })
+    } finally {
+      setUpdatingStaffId(null)
+    }
   }
 
   const handleSaveStaff = async () => {
     if (!editingStaff.name.trim() || !editingStaff.email.trim() || !editingStaff.phone.trim()) return say('Enter the staff name, email and phone number', { type: 'error' })
-    if (editingStaff.password && editingStaff.password.length < 10) return say('Use a temporary password with at least 10 characters', { type: 'error' })
+    if (editingStaff.password && editingStaff.password.length < 6) return say('Use a temporary password with at least 6 characters', { type: 'error' })
     const payload = {
       name: editingStaff.name.trim(),
-      email: editingStaff.email.trim(),
+      email: editingStaff.email.trim().toLowerCase(),
       phone: editingStaff.phone.trim(),
       role: editingStaff.role,
       branch: editingStaff.branch,
       ...(editingStaff.password ? { password: editingStaff.password } : {})
     }
+    if (editingStaff.isMock) {
+      setStaff(rows => rows.map(row => row.id === editingStaff.id ? { ...row, ...payload, password: '', isMock: true } : row))
+      setEditingStaff(null)
+      say('Sample preview updated locally; no account was changed.')
+      return
+    }
+    if (!editingStaff.id) return say('This staff record is missing its ID. Refresh the roster and try again.', { type: 'error' })
     setSavingEdit(true)
     try {
-      const { staff: updated } = await api(`/admin/staff/${editingStaff.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
-      setStaff(rows => rows.map(row => row.id === updated.id ? updated : row))
+      const { staff: updated } = await api(`/admin/staff/${encodeURIComponent(editingStaff.id)}`, { method: 'PATCH', body: JSON.stringify(payload) })
+      setStaff(rows => rows.map(row => row.id === editingStaff.id ? { ...updated, id: String(updated.id ?? updated._id ?? editingStaff.id) } : row))
       setEditingStaff(null)
       say(`Updated ${updated.name}'s account.`)
     } catch (error) {
@@ -1425,11 +1449,22 @@ function Staff() {
           <h3>Staff Roster & Permissions Management</h3>
           <p className="muted small">Create real staff sign-ins, assign a branch and disable accounts when access should end.</p>
         </div>
+        <button type="button" className="btn-pbd-action" onClick={() => setShowAddStaff(value => !value)} disabled={addingStaff}>
+          {showAddStaff ? 'Cancel Add' : '+ Add Staff Member'}
+        </button>
       </div>
 
       {/* Add Staff Form */}
-      <div className="pbd-add-meal-grid mt-2 mb-3">
-        <label>
+      {showAddStaff && <section className="staff-create-panel" aria-label="Add a staff member">
+        <div className="staff-create-panel-head">
+          <div>
+            <h4>Create a staff account</h4>
+            <p>Set their sign-in details, role, and branch access.</p>
+          </div>
+          <span className="staff-create-lockup">STAFF ACCESS</span>
+        </div>
+        <div className="staff-create-grid">
+        <label className="staff-create-field">
           <span className="field-label-small">Staff Name *</span>
           <input
             placeholder="e.g. Kwame Mensah"
@@ -1440,7 +1475,7 @@ function Staff() {
           />
         </label>
 
-        <label>
+        <label className="staff-create-field">
           <span className="field-label-small">Staff Email *</span>
           <input
             type="email"
@@ -1452,13 +1487,13 @@ function Staff() {
           />
         </label>
 
-        <label>
+        <label className="staff-create-field">
           <span className="field-label-small">Temporary Password *</span>
           <input
             type="password"
-            minLength={10}
+            minLength={6}
             autoComplete="new-password"
-            placeholder="At least 10 characters"
+            placeholder="At least 6 characters"
             value={newStaff.password}
             onChange={e => setNewStaff({ ...newStaff, password: e.target.value })}
             className="pbd-input"
@@ -1466,7 +1501,7 @@ function Staff() {
           />
         </label>
 
-        <label>
+        <label className="staff-create-field">
           <span className="field-label-small">Assigned Role *</span>
           <select
             value={newStaff.role}
@@ -1481,7 +1516,7 @@ function Staff() {
           </select>
         </label>
 
-        <label>
+        <label className="staff-create-field">
           <span className="field-label-small">Branch</span>
           <select
             value={newStaff.branch}
@@ -1494,7 +1529,7 @@ function Staff() {
           </select>
         </label>
 
-        <label>
+        <label className="staff-create-field">
           <span className="field-label-small">Phone Number *</span>
           <input
             placeholder="024 123 4567"
@@ -1505,40 +1540,22 @@ function Staff() {
           />
         </label>
 
-        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-          <button className="btn-pbd-action full-width" disabled={addingStaff} onClick={handleAddStaff}>
+        <div className="staff-create-actions">
+          <button type="button" className="btn-del-sm" disabled={addingStaff} onClick={() => setShowAddStaff(false)}>Cancel</button>
+          <button type="button" className="btn-pbd-action" disabled={addingStaff} onClick={handleAddStaff}>
             {addingStaff ? (
               <>
                 <span className="pbd-spinner-sm" /> Adding Staff...
               </>
             ) : (
-              '+ Add Staff Member'
+              'Create Staff Account'
             )}
           </button>
         </div>
-      </div>
-
-      {editingStaff && (
-        <div className="pbd-white-card mt-2" style={{ border: '1px solid #cbd5e1' }}>
-          <h4>Edit staff account: {editingStaff.name}</h4>
-          <div className="pbd-add-meal-grid mt-2">
-            <label><span className="field-label-small">Staff Name</span><input className="pbd-input" value={editingStaff.name} onChange={e => setEditingStaff({ ...editingStaff, name: e.target.value })} disabled={savingEdit} /></label>
-            <label><span className="field-label-small">Sign-in Email</span><input type="email" className="pbd-input" value={editingStaff.email} onChange={e => setEditingStaff({ ...editingStaff, email: e.target.value })} disabled={savingEdit} /></label>
-            <label><span className="field-label-small">Phone Number</span><input className="pbd-input" value={editingStaff.phone} onChange={e => setEditingStaff({ ...editingStaff, phone: e.target.value })} disabled={savingEdit} /></label>
-            <label><span className="field-label-small">Role</span><select className="pbd-select" value={editingStaff.role} onChange={e => setEditingStaff({ ...editingStaff, role: e.target.value })}><option value="Manager">Manager</option><option value="Kitchen">Kitchen</option><option value="Driver">Driver</option><option value="Cashier">Cashier</option></select></label>
-            <label><span className="field-label-small">Assigned Branch</span><select className="pbd-select" value={editingStaff.branch} onChange={e => setEditingStaff({ ...editingStaff, branch: e.target.value })}><option value="cug">Catholic University (Annex)</option><option value="sunyani">Sunyani Main Branch</option><option value="all">All Branches</option></select></label>
-            <label><span className="field-label-small">Reset Password (optional)</span><input type="password" minLength={10} autoComplete="new-password" className="pbd-input" placeholder="Leave blank to keep current" value={editingStaff.password} onChange={e => setEditingStaff({ ...editingStaff, password: e.target.value })} disabled={savingEdit} /></label>
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button className="btn-pbd-action" disabled={savingEdit} onClick={handleSaveStaff}>
-              {savingEdit ? 'Saving account...' : 'Save account'}
-            </button>
-            <button className="btn-pbd-action" disabled={savingEdit} onClick={() => setEditingStaff(null)}>
-              Cancel
-            </button>
-          </div>
         </div>
-      )}
+      </section>}
+
+
 
       {loadingStaff && staff.length === 0 ? (
         <div className="pbd-loading-container">
@@ -1551,25 +1568,34 @@ function Staff() {
           <p className="muted small">Add staff above to grant role-based console access.</p>
         </div>
       ) : (
-        <Table
-          head={['Staff Member', 'Sign-in Email', 'Role', 'Assigned Branch', 'Contact Phone', 'Active Status', 'Actions']}
-          rows={staff.map(s => [
-            <strong key="n">{s.name}</strong>,
-            <span key="e">{s.email}</span>,
-            <span key="r" className="role-tag-badge">{s.role}</span>,
-            <span key="b">{s.branch === 'all' ? 'All Branches' : bn(s.branch)}</span>,
-            <span key="p">{s.phone}</span>,
-            <label key="act" className="pbd-switch">
-              <input
-                type="checkbox"
-                checked={s.active}
-                onChange={() => handleToggleActive(s)}
-              />
-              <span className="pbd-slider" />
-            </label>,
-            <div key="actions" style={{ display: 'flex', gap: 6 }}><button className="btn-del-sm" onClick={() => setEditingStaff({ ...s, password: '' })}>Edit</button><button className="btn-del-sm" onClick={() => handleDeleteStaff(s.id, s.name)}>Disable</button></div>
-          ])}
-        />
+        <>
+          {staff.some(member => member.isMock) && <p className="staff-preview-notice">Sample preview data — edits are local only and do not change staff accounts.</p>}
+          <Table
+            head={['Staff Member', 'Sign-in Email', 'Role', 'Assigned Branch', 'Contact Phone', 'Active Status', 'Actions']}
+            rows={staff.map(s => {
+              const isEditing = editingStaff?.id === s.id
+              const editField = (field, value, type = 'text') => <input key={field} className="staff-inline-input" type={type} value={value} disabled={savingEdit} onChange={event => setEditingStaff(current => ({ ...current, [field]: event.target.value }))} />
+              return [
+                isEditing ? editField('name', editingStaff.name) : <strong key="n">{s.name}</strong>,
+                isEditing ? editField('email', editingStaff.email, 'email') : <span key="e">{s.email}</span>,
+                isEditing ? <select key="r" className="staff-inline-input" value={editingStaff.role} disabled={savingEdit} onChange={event => setEditingStaff(current => ({ ...current, role: event.target.value }))}><option>Cashier</option><option>Manager</option><option>Kitchen</option><option>Driver</option></select> : <span key="r" className="role-tag-badge">{s.role}</span>,
+                isEditing ? <select key="b" className="staff-inline-input" value={editingStaff.branch} disabled={savingEdit} onChange={event => setEditingStaff(current => ({ ...current, branch: event.target.value }))}><option value="cug">Catholic University (Annex)</option><option value="sunyani">Sunyani Main Branch</option><option value="all">All Branches</option></select> : <span key="b">{s.branch === 'all' ? 'All Branches' : bn(s.branch)}</span>,
+                isEditing ? editField('phone', editingStaff.phone, 'tel') : <span key="p">{s.phone}</span>,
+                <span key="active" className={`staff-status-pill ${s.active ? 'is-active' : 'is-disabled'}`}>{s.active ? 'Active' : 'Disabled'}</span>,
+                <div key="actions" className="staff-row-actions">
+                  {isEditing ? <>
+                    <input className="staff-inline-input staff-password-input" type="password" autoComplete="new-password" placeholder="New password (optional)" value={editingStaff.password || ''} disabled={savingEdit} onChange={event => setEditingStaff(current => ({ ...current, password: event.target.value }))} />
+                    <button type="button" className="btn-pbd-action" disabled={savingEdit} onClick={handleSaveStaff}>{savingEdit ? 'Saving…' : 'Save'}</button>
+                    <button type="button" className="btn-del-sm" disabled={savingEdit} onClick={() => setEditingStaff(null)}>Cancel</button>
+                  </> : <>
+                    <button type="button" className="btn-del-sm" disabled={updatingStaffId === s.id || savingEdit} onClick={() => setEditingStaff({ ...s, password: '' })}>Edit</button>
+                    <button type="button" className="btn-del-sm" disabled={updatingStaffId === s.id || savingEdit} onClick={() => handleSetStaffActive(s)}>{updatingStaffId === s.id ? 'Saving…' : s.active ? 'Disable' : 'Enable'}</button>
+                  </>}
+                </div>
+              ]
+            })}
+          />
+        </>
       )}
     </div>
   )

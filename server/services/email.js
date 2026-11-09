@@ -293,7 +293,7 @@ export async function sendOrderConfirmationEmail({ order, user = null, req = nul
         ${itemsList}
         <tr>
           <td style="padding:8px 0; color:#64748b;">Subtotal</td>
-          <td align="right" style="padding:8px 0; font-weight:600;">GH₵ ${Number(order.subtotal ?? ((order.total || 0) - (order.deliveryFee || 0) + (order.discount || 0))).toFixed(2)}</td>
+          <td align="right" style="padding:8px 0; font-weight:600;">GH₵ ${Number(order.subtotal ?? (Number(order.total || 0) - Number(order.deliveryFee || 0) + Number(order.discount || 0))).toFixed(2)}</td>
         </tr>
         ${order.discount ? `
         <tr>

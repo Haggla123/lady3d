@@ -349,7 +349,7 @@ export const REVIEWS = []
 
 export const ROLES = {
   Owner: ['overview', 'orders', 'delivery', 'inventory', 'branch-dashboards', 'menu', 'categories', 'branches', 'customers', 'loyalty', 'promos', 'payments', 'analytics', 'reviews', 'staff', 'settings'],
-  Manager: ['overview', 'orders', 'delivery', 'inventory', 'branch-dashboards', 'menu', 'categories', 'branches', 'customers', 'loyalty', 'promos', 'reviews'],
+  Manager: ['overview', 'orders', 'delivery', 'inventory', 'branch-dashboards', 'categories', 'branches', 'customers', 'loyalty', 'promos', 'reviews'],
   Kitchen: ['orders', 'inventory'],
   Driver: ['delivery'],
   Cashier: ['overview', 'orders', 'branch-dashboards'],

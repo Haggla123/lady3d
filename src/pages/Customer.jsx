@@ -1746,7 +1746,7 @@ export function SignUp() {
     if (!cleanName) return say('Please enter your full name')
     if (!cleanEmail || !cleanEmail.includes('@')) return say('Please enter a valid email address')
     if (!cleanPhone || cleanPhone.length < 9) return say('Please enter a valid phone number (at least 9 digits)')
-    if (!password || password.length < 8) return say('Use a password with at least 8 characters')
+    if (!password || password.length < 6) return say('Use a password with at least 6 characters')
     if (!agreed) return say('Please agree to terms to register')
 
     setBusy(true)
@@ -1843,7 +1843,8 @@ export function SignUp() {
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={e => setPassword(e.target.value)}
-              placeholder="At least 8 characters"
+              minLength={6}
+              placeholder="At least 6 characters"
               required
             />
           </label>
@@ -1961,7 +1962,7 @@ export function ResetPassword() {
     }
   }
 
-  return <div className="auth-modern-screen"><div className="auth-card-container"><h1 className="auth-title">{token ? 'Choose a new password' : 'Reset your password'}</h1><p className="auth-subtitle">{token ? 'Set a new password for your Lady 3D account.' : 'Enter your account email and we’ll send you a secure reset link.'}</p>{message ? <p role="status">{message}</p> : <form className="auth-form-fields" onSubmit={submit}><label className="input-field-wrap"><span>Email address</span><input type="email" autoComplete="email" required value={email} onChange={event => setEmail(event.target.value)} /></label>{token && <label className="input-field-wrap"><span>New password</span><input type="password" autoComplete="new-password" minLength={8} required value={password} onChange={event => setPassword(event.target.value)} /></label>}<button className="btn-auth-submit" type="submit" disabled={busy}>{busy ? 'Please wait…' : token ? 'Update Password' : 'Send Reset Link'}</button></form>}<Link to="/login" className="auth-switch-link">Back to sign in</Link></div></div>
+  return <div className="auth-modern-screen"><div className="auth-card-container"><h1 className="auth-title">{token ? 'Choose a new password' : 'Reset your password'}</h1><p className="auth-subtitle">{token ? 'Set a new password for your Lady 3D account.' : 'Enter your account email and we’ll send you a secure reset link.'}</p>{message ? <p role="status">{message}</p> : <form className="auth-form-fields" onSubmit={submit}><label className="input-field-wrap"><span>Email address</span><input type="email" autoComplete="email" required value={email} onChange={event => setEmail(event.target.value)} /></label>{token && <label className="input-field-wrap"><span>New password</span><input type="password" autoComplete="new-password" minLength={6} required value={password} onChange={event => setPassword(event.target.value)} /></label>}<button className="btn-auth-submit" type="submit" disabled={busy}>{busy ? 'Please wait…' : token ? 'Update Password' : 'Send Reset Link'}</button></form>}<Link to="/login" className="auth-switch-link">Back to sign in</Link></div></div>
 }
 
 // 10. Modern Account / Profile Screen (Bon Appétit Screen 5)
@@ -2042,7 +2043,7 @@ export function Account() {
 
   const handlePasswordChange = async event => {
     event.preventDefault()
-    if (passwords.newPassword.length < 10) return say('Use a new password with at least 10 characters.')
+    if (passwords.newPassword.length < 6) return say('Use a new password with at least 6 characters.')
     if (passwords.newPassword !== passwords.confirmPassword) return say('The new passwords do not match.')
     setSavingPassword(true)
     try {
@@ -2305,8 +2306,8 @@ export function Account() {
           <form className="account-settings-card account-password-form" onSubmit={handlePasswordChange}>
             <h3>Change password</h3>
             <label className="input-field-wrap"><span>Current password</span><input type="password" autoComplete="current-password" required value={passwords.currentPassword} onChange={e => setPasswords({ ...passwords, currentPassword: e.target.value })} disabled={savingPassword} /></label>
-            <label className="input-field-wrap"><span>New password</span><input type="password" autoComplete="new-password" minLength={10} required value={passwords.newPassword} onChange={e => setPasswords({ ...passwords, newPassword: e.target.value })} disabled={savingPassword} /></label>
-            <label className="input-field-wrap"><span>Confirm new password</span><input type="password" autoComplete="new-password" minLength={10} required value={passwords.confirmPassword} onChange={e => setPasswords({ ...passwords, confirmPassword: e.target.value })} disabled={savingPassword} /></label>
+            <label className="input-field-wrap"><span>New password</span><input type="password" autoComplete="new-password" minLength={6} required value={passwords.newPassword} onChange={e => setPasswords({ ...passwords, newPassword: e.target.value })} disabled={savingPassword} /></label>
+            <label className="input-field-wrap"><span>Confirm new password</span><input type="password" autoComplete="new-password" minLength={6} required value={passwords.confirmPassword} onChange={e => setPasswords({ ...passwords, confirmPassword: e.target.value })} disabled={savingPassword} /></label>
             <button className="btn-order-cta" type="submit" disabled={savingPassword}>
               {savingPassword ? (
                 <>
