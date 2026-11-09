@@ -4,7 +4,9 @@ const getFrontendUrl = (req = null) => {
   if (process.env.FRONTEND_PUBLIC_URL) {
     try {
       const configuredUrl = new URL(process.env.FRONTEND_PUBLIC_URL)
-      if (['http:', 'https:'].includes(configuredUrl.protocol)) return process.env.FRONTEND_PUBLIC_URL.replace(/\/$/, '')
+      if (['http:', 'https:'].includes(configuredUrl.protocol) && !process.env.FRONTEND_PUBLIC_URL.includes('#')) {
+        return process.env.FRONTEND_PUBLIC_URL.replace(/\/$/, '')
+      }
     } catch {}
     throw new Error('FRONTEND_PUBLIC_URL must be a valid http(s) URL for email links')
   }
@@ -291,7 +293,7 @@ export async function sendOrderConfirmationEmail({ order, user = null, req = nul
         ${itemsList}
         <tr>
           <td style="padding:8px 0; color:#64748b;">Subtotal</td>
-          <td align="right" style="padding:8px 0; font-weight:600;">GH₵ ${Number(order.subtotal || order.total || 0).toFixed(2)}</td>
+          <td align="right" style="padding:8px 0; font-weight:600;">GH₵ ${Number(order.subtotal ?? ((order.total || 0) - (order.deliveryFee || 0) + (order.discount || 0))).toFixed(2)}</td>
         </tr>
         ${order.discount ? `
         <tr>

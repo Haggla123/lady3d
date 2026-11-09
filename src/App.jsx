@@ -41,7 +41,7 @@ function StaffLoginPage() {
               type="text"
               inputMode="email"
               autoComplete="username"
-              placeholder="e.g. owner@lady3d.local or admin"
+              placeholder="e.g. admin@lady3d.com or admin"
               required
               value={email}
               onChange={e => setEmail(e.target.value)}
