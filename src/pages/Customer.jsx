@@ -86,7 +86,7 @@ export function Onboarding({ onStart, onSignIn, onSignUp }) {
 
 // 2. Modern Home Page (SnapEats Screen 2 + Arby's + Bon Appétit)
 export function Home() {
-  const { menu, branch, orderType, setOrderType, applyPromo, setActiveFood, add, promos, user, loyaltyRules } = useApp()
+  const { menu, branch, orderType, setOrderType, applyPromo, setActiveFood, add, promos, user, loyaltyRules, say, settings } = useApp()
   const [activeCat, setActiveCat] = useState('All')
   const [searchVal, setSearchVal] = useState('')
 
@@ -136,8 +136,14 @@ export function Home() {
           <p className="promo-banner-sub">{promo.bannerText || `Use voucher ${promo.code}`} {promo.code && <>Code: <b>{promo.code}</b></>}</p>
           <div className="promo-banner-actions">
             <button
+              type="button"
               className="btn-claim-voucher"
               onClick={() => {
+                if (!user) {
+                  say('Sign up or sign in to claim your 20% welcome voucher!')
+                  go('/signup')
+                  return
+                }
                 if (promo.code) applyPromo(promo.code)
                 go('/menu')
               }}
@@ -283,7 +289,7 @@ export function Home() {
         <div className="rewards-text-col">
           <h3 className="rewards-banner-title">LADY 3D REWARDS</h3>
           <p className="rewards-banner-desc">
-            Earn 1 point per GH₵{loyaltyRules.spendPerPoint} spent. Reach {loyaltyRules.rewardThreshold} points for a free plate.
+            Earn 1 point per {money(loyaltyRules.spendPerPoint)} spent. Reach {loyaltyRules.rewardThreshold} points for a free plate.
           </p>
         </div>
         <Link to="/account" className="btn-rewards-join">
@@ -1198,7 +1204,7 @@ export function Checkout() {
 
 // 6b. Order Success Confirmation Screen
 export function OrderSuccess({ refId }) {
-  const { orders } = useApp()
+  const { orders, settings } = useApp()
   const currentRef = (refId || '').toUpperCase()
   const order = orders.find(x => x.ref === currentRef) || orders[0]
   const [copied, setCopied] = useState(false)
@@ -1360,12 +1366,12 @@ export function OrderSuccess({ refId }) {
         <div className="success-help-note">
           <span>Need help or special instructions?</span>
           <a
-            href={`https://wa.me/233531299243?text=Hello%20Lady%203D's,%20I%20just%20placed%20order%20${order?.ref || currentRef}.`}
+            href={`https://wa.me/${getBranchWhatsApp(order?.branch, settings)}?text=Hello%20${encodeURIComponent(settings?.businessName || "Lady 3D's")},%20I%20just%20placed%20order%20${order?.ref || currentRef}.`}
             target="_blank"
             rel="noreferrer"
             className="whatsapp-support-link"
           >
-            Chat with Lady 3D’s on WhatsApp (053 129 9243)
+            Chat with {settings?.businessName || 'Lady 3D’s'} on WhatsApp ({order?.branch === 'sunyani' ? (settings?.sunyaniWhatsapp || '053 129 9243') : (settings?.cugWhatsapp || '053 129 9243')})
           </a>
         </div>
       </div>
@@ -2062,7 +2068,7 @@ export function Account() {
         </div>
 
         <p className="rewards-note">
-          {Math.max(0, loyaltyRules.rewardThreshold - points)} more points needed to claim your next <b>FREE Plate</b>! (Earn 1 pt per GH₵{loyaltyRules.spendPerPoint} spent).
+          {Math.max(0, loyaltyRules.rewardThreshold - points)} more points needed to claim your next <b>FREE Plate</b>! (Earn 1 pt per {money(loyaltyRules.spendPerPoint)} spent).
         </p>
       </div>
 
@@ -2240,7 +2246,7 @@ export function Account() {
 
 // 11. Campus & Community Page
 export function Community() {
-  const { votes, castVote, voted, reviews, branch, setBranch, say, refreshAllData, isNetworkBusy } = useApp()
+  const { votes, castVote, voted, reviews, branch, setBranch, say, refreshAllData, isNetworkBusy, settings } = useApp()
   const tot = Object.values(votes).reduce((a, b) => a + b, 0)
 
   return (
@@ -2291,15 +2297,15 @@ export function Community() {
               <div className="branch-contact-info-list">
                 <div className="branch-contact-row">
                   <span className="contact-label">Location:</span>
-                  <span className="contact-val">Fiapre Campus, Catholic University of Ghana</span>
+                  <span className="contact-val">{settings?.cugAddress || 'Fiapre Campus, Catholic University of Ghana'}</span>
                 </div>
                 <div className="branch-contact-row">
                   <span className="contact-label">Order Phone:</span>
-                  <a href="tel:0276913089" className="contact-val link-val">027 691 3089</a>
+                  <a href={`tel:${(settings?.generalPhone || '027 691 3089').replace(/\s/g, '')}`} className="contact-val link-val">{settings?.generalPhone || '027 691 3089'}</a>
                 </div>
                 <div className="branch-contact-row">
                   <span className="contact-label">WhatsApp:</span>
-                  <a href="https://wa.me/233531299243" target="_blank" rel="noreferrer" className="contact-val link-val">053 129 9243</a>
+                  <a href={`https://wa.me/${getBranchWhatsApp('cug', settings)}`} target="_blank" rel="noreferrer" className="contact-val link-val">{settings?.cugWhatsapp || '053 129 9243'}</a>
                 </div>
               </div>
               <div className="branch-action-buttons">
@@ -2343,15 +2349,19 @@ export function Community() {
               <div className="branch-contact-info-list">
                 <div className="branch-contact-row">
                   <span className="contact-label">Location:</span>
-                  <span className="contact-val">Market Circle / Main Road, Sunyani</span>
+                  <span className="contact-val">{settings?.sunyaniAddress || 'Market Circle / Main Road, Sunyani'}</span>
                 </div>
                 <div className="branch-contact-row">
                   <span className="contact-label">Order Phone:</span>
-                  <a href="tel:0276913089" className="contact-val link-val">027 691 3089</a>
+                  <a href={`tel:${(settings?.generalPhone || '027 691 3089').replace(/\s/g, '')}`} className="contact-val link-val">{settings?.generalPhone || '027 691 3089'}</a>
                 </div>
                 <div className="branch-contact-row">
                   <span className="contact-label">Book Events:</span>
-                  <a href="tel:0244650474" className="contact-val link-val highlight-tel">024 465 0474</a>
+                  <a href={`tel:${(settings?.cateringPhone || '024 465 0474').replace(/\s/g, '')}`} className="contact-val link-val highlight-tel">{settings?.cateringPhone || '024 465 0474'}</a>
+                </div>
+                <div className="branch-contact-row">
+                  <span className="contact-label">WhatsApp:</span>
+                  <a href={`https://wa.me/${getBranchWhatsApp('sunyani', settings)}`} target="_blank" rel="noreferrer" className="contact-val link-val">{settings?.sunyaniWhatsapp || '053 129 9243'}</a>
                 </div>
               </div>
               <div className="branch-action-buttons">
@@ -2437,7 +2447,7 @@ export function Community() {
 
           <div className="catering-contact-action-bar">
             <a
-              href="https://wa.me/233531299243?text=Hello%20Lady%203D's%20Catering%20Services,%20I%20would%20like%20to%20inquire%20about%20catering%20for%20our%20event."
+              href={`https://wa.me/${getBranchWhatsApp('sunyani', settings)}?text=Hello%20${encodeURIComponent(settings?.businessName || "Lady 3D's Catering Services")},%20I%20would%20like%20to%20inquire%20about%20catering%20for%20our%20event.`}
               target="_blank"
               rel="noreferrer"
               className="btn-whatsapp"
@@ -2445,7 +2455,7 @@ export function Community() {
               Contact Catering via WhatsApp
             </a>
             <span className="catering-hotline-note">
-              Kitchen Hotline: <b>027 691 3089</b> / <b>053 129 9243</b> • Book Events: <b>024 465 0474</b>
+              Kitchen Hotline: <b>{settings?.generalPhone || '027 691 3089'}</b> / <b>{settings?.cugWhatsapp || '053 129 9243'}</b> • Book Events: <b>{settings?.cateringPhone || '024 465 0474'}</b>
             </span>
           </div>
         </div>
@@ -2456,13 +2466,13 @@ export function Community() {
         <h2>Campus Delivery Hubs & Hours</h2>
         <div className="schedule-locations-grid">
           <div className="schedule-location-item">
-            <span className="location-name">Catholic University of Ghana (Fiapre Annex)</span>
-            <span className="location-hours">Monday – Saturday: 10:30 AM – 6:30 PM</span>
+            <span className="location-name">Catholic University of Ghana ({settings?.cugAddress || 'Fiapre Annex'})</span>
+            <span className="location-hours">{settings?.hours || 'Monday – Saturday: 10:30 AM – 6:30 PM'}</span>
             <span className="location-coverage">Direct delivery to Hall 1, Hall 2, Hall 3, Annex, and Faculty Offices</span>
           </div>
           <div className="schedule-location-item">
-            <span className="location-name">Sunyani Main Kitchen</span>
-            <span className="location-hours">Monday – Sunday: 7:00 AM – 8:00 PM</span>
+            <span className="location-name">Sunyani Main Kitchen ({settings?.sunyaniAddress || 'Market Circle'})</span>
+            <span className="location-hours">{settings?.hours || 'Monday – Sunday: 7:00 AM – 8:00 PM'}</span>
             <span className="location-coverage">Counter pickup at Market Circle and delivery across Sunyani Township</span>
           </div>
         </div>

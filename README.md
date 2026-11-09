@@ -149,3 +149,15 @@ npm run dev
 Open `http://localhost:5173/#/staff-login` and sign in using the owner email and password you put in `.env`. Optional demo staff accounts can be created with `SEED_DEMO_STAFF=true` only when `NODE_ENV=development` is explicitly set; an unset `NODE_ENV` is treated as non-local, and demo accounts are purged. Initial passwords for staff accounts must be set securely via `.env` or the Admin Staff Management console.
 
 Paystack checkout stays hidden until `.env` has `PAYSTACK_SECRET_KEY` and real, reachable `API_PUBLIC_URL` and `FRONTEND_PUBLIC_URL` values. Use your Paystack test secret key during development. Set the Paystack webhook URL to `<API_PUBLIC_URL>/api/payments/paystack/webhook`; the browser return URL is registered by the server as `<API_PUBLIC_URL>/api/payments/paystack/return`.
+
+## Production Deployment (Vercel frontend + API)
+
+This repository's Vercel configuration serves the React app and does not deploy the Express API. Deploy `server/index.js` to a Node.js host and configure these values in that API host:
+
+- `MONGODB_URI` and `JWT_SECRET`
+- `FRONTEND_ORIGIN=https://lady3d.vercel.app`
+- `API_PUBLIC_URL` as the API host's public HTTPS URL
+- `FRONTEND_PUBLIC_URL=https://lady3d.vercel.app`
+- `PAYSTACK_SECRET_KEY` when Paystack is enabled
+
+In the Vercel project's Production environment, set `VITE_API_URL` to the API host's public origin (for example, `https://api.yourdomain.com`) and redeploy. `VITE_API_URL` is embedded in the frontend build; a local `.env` change does not update the deployed site. Do not put `PAYSTACK_SECRET_KEY` in Vercel's frontend build variables.

@@ -19,15 +19,20 @@ export const Link = ({ to = '/', children, className = '', onClick, ...p }) => {
 }
 
 export function Wordmark({ light = false, compact = false }) {
+  const app = useApp()
+  const businessName = app?.settings?.businessName || "Lady 3D's Catering Services"
+  const parts = businessName.split("'s ")
+  const title = parts.length > 1 ? `${parts[0]}'S` : businessName.toUpperCase()
+  const sub = parts.length > 1 ? parts.slice(1).join(' ').toUpperCase() : 'CATERING SERVICES'
   return (
     <span className={`brand-mark ${light ? 'light' : ''} ${compact ? 'compact' : ''}`}>
       <div className="brand-logo-wrap">
-        <img src="/lady3d-logo.jpg" alt="Lady 3D's" className="brand-logo-img" />
+        <img src="/lady3d-logo.jpg" alt={businessName} className="brand-logo-img" />
       </div>
       {!compact && (
         <span className="brand-text-block">
-          <b className="brand-title">LADY 3D’S</b>
-          <i className="brand-sub">CATERING SERVICES</i>
+          <b className="brand-title">{title}</b>
+          <i className="brand-sub">{sub}</i>
         </span>
       )}
     </span>

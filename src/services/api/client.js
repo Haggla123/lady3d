@@ -1,4 +1,4 @@
-export const getApiBaseUrl = () => import.meta.env.VITE_API_URL || ''
+export const getApiBaseUrl = () => (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
 
 let activeRequests = 0
 const listeners = new Set()
@@ -37,7 +37,10 @@ export async function api(path, options = {}) {
       try {
         data = JSON.parse(text)
       } catch {
-        const clean = text.replace(/<[^>]*>/g, '').trim()
+        if (response.headers.get('content-type')?.includes('text/html') || /^\s*</.test(text)) {
+          throw new Error('The API returned a website page instead of data. Set VITE_API_URL to your deployed backend URL and redeploy the frontend.')
+        }
+        const clean = text.trim()
         data = { error: clean || `Request failed (${response.status})` }
       }
     }

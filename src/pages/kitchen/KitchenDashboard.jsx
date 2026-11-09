@@ -4,6 +4,7 @@ import { playKitchenChime } from '../../services/notifications/chime.js'
 import { money } from '../../utils/money.js'
 import { ORDER_STATUS_MAP, BRANCHES } from '../../data.js'
 import { Link } from '../../components/ui.jsx'
+import { useApp } from '../../store.jsx'
 
 // Clean SVG Icons (no emojis)
 function IconChefHat({ size = 18, color = 'currentColor' }) {
@@ -191,11 +192,12 @@ function IconBike({ size = 16, color = 'currentColor' }) {
 }
 
 export default function KitchenDashboard({ branchId: propBranch = 'cug', staffUser }) {
+  const { settings } = useApp() || {}
   const [selectedBranch, setSelectedBranch] = useState(propBranch)
   const [orders, setOrders] = useState([])
   const [availability, setAvailability] = useState([])
   const [menuItems, setMenuItems] = useState([])
-  const [soundEnabled, setSoundEnabled] = useState(true)
+  const [soundEnabled, setSoundEnabled] = useState(() => settings?.orderNotificationSound !== false)
   const [activeTab, setActiveTab] = useState('queue') // 'queue' | 'stock'
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)

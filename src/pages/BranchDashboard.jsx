@@ -91,13 +91,14 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
     say,
     refreshAllData,
     isNetworkBusy,
-    api
+    api,
+    settings
   } = useApp()
 
   const [activeSection, setActiveSection] = useState(section || 'overview')
   const [kitchenFilter, setKitchenFilter] = useState('active')
   const [searchOrder, setSearchOrder] = useState('')
-  const [soundEnabled, setSoundEnabled] = useState(true)
+  const [soundEnabled, setSoundEnabled] = useState(() => settings?.orderNotificationSound !== false)
 
   // Manager Meal Add / Edit state
   const [showAddModal, setShowAddModal] = useState(false)
@@ -616,7 +617,7 @@ export default function BranchDashboard({ branchId = 'sunyani', section = 'overv
                     <h2 className="pbd-hero-title">{currentBranch.name}</h2>
                     <p className="pbd-hero-desc">{currentBranch.tagline}</p>
                     <p className="small" style={{ color: 'rgba(255,255,255,0.85)', margin: '4px 0 12px' }}>
-                      {currentBranch.address} · WhatsApp Kitchen: <b>{currentBranch.whatsapp}</b>
+                      {(lockedBranchId === 'sunyani' ? settings?.sunyaniAddress : settings?.cugAddress) || currentBranch.address} · WhatsApp Kitchen: <b>{(lockedBranchId === 'sunyani' ? settings?.sunyaniWhatsapp : settings?.cugWhatsapp) || currentBranch.whatsapp}</b>
                     </p>
 
                     <div className="pbd-hero-buttons">

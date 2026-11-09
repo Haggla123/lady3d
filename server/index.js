@@ -82,6 +82,21 @@ const authBody = z.object({
   password: z.string().min(1, 'Password is required').max(128)
 })
 const DUMMY_PASSWORD_HASH = '$2b$12$eSYGwB4k8vTtD0yAEeIv6u4hpScgwVCx1IHfYDSs9w2zGgvq/krW.'
+const isPublicHttpsUrl = value => {
+  try {
+    const url = new URL(value)
+    const host = url.hostname.toLowerCase()
+    const placeholderHost = host.startsWith('your-') || host === 'example.com' || host.endsWith('.example.com') || ['.example', '.invalid', '.test', '.local'].some(suffix => host.endsWith(suffix))
+    return url.protocol === 'https:' && host.includes('.') && !url.username && !url.password && !placeholderHost && !['localhost', '127.0.0.1'].includes(host)
+  } catch {
+    return false
+  }
+}
+const isPaystackConfigured = () => Boolean(
+  process.env.PAYSTACK_SECRET_KEY?.trim() &&
+  isPublicHttpsUrl(process.env.API_PUBLIC_URL) &&
+  isPublicHttpsUrl(process.env.FRONTEND_PUBLIC_URL)
+)
 
 const lookupUserByLogin = async (identifier) => {
   const clean = (identifier || '').trim().toLowerCase()
@@ -113,19 +128,11 @@ async function getWeeklyVotes() {
   }
 
   if (state.value?.weekOf !== weekOf) {
+    const existingCounts = state.value?.counts || { 'Waakye Special': 0, 'Jollof & Chicken': 0, 'Fufu & Light Soup': 0 }
+    const resetCounts = Object.fromEntries(Object.keys(existingCounts).map(k => [k, 0]))
     const rolledOver = await AppState.findOneAndUpdate(
-      { key: 'votes', 'value.weekOf': { $ne: weekOf } },
-      [{ $set: { value: {
-        weekOf,
-        counts: { $arrayToObject: { $map: {
-          input: { $objectToArray: { $ifNull: [
-            '$value.counts',
-            { $cond: [{ $eq: [{ $type: '$value.weekOf' }, 'missing'] }, '$value', {}] }
-          ] } },
-          as: 'vote',
-          in: { k: '$$vote.k', v: 0 }
-        } } }
-      } } }],
+      { key: 'votes' },
+      { $set: { value: { weekOf, counts: resetCounts } } },
       { new: true }
     )
     state = rolledOver || await AppState.findOne({ key: 'votes' })
@@ -274,14 +281,14 @@ app.get('/api/health', (_req, res) =>
 
 app.get('/api/public/config', (_req, res) =>
   res.json({
-    paystackEnabled: [process.env.PAYSTACK_SECRET_KEY, process.env.API_PUBLIC_URL, process.env.FRONTEND_PUBLIC_URL].every(Boolean)
+    paystackEnabled: isPaystackConfigured()
   })
 )
 
 // Public bootstrap
 app.get('/api/public/bootstrap', asyncRoute(async (_req, res) => {
   const date = getTodayString()
-  const [menuState, menuItems, branches, deliveryZones, dailyStock, promos, reviews, loyaltyRules, votes] = await Promise.all([
+  const [menuState, menuItems, branches, deliveryZones, dailyStock, promos, reviews, loyaltyRules, votes, settingsState] = await Promise.all([
     AppState.findOne({ key: 'menu' }).lean(),
     MenuItem.find().sort({ id: 1 }).lean(),
     Branch.find().lean(),
@@ -290,8 +297,22 @@ app.get('/api/public/bootstrap', asyncRoute(async (_req, res) => {
     Promo.find({ enabled: true }).lean(),
     Review.find({ show: true }).sort({ createdAt: -1 }).limit(100).lean(),
     AppState.findOne({ key: 'loyaltyRules' }).lean(),
-    getWeeklyVotes()
+    getWeeklyVotes(),
+    AppState.findOne({ key: 'settings' }).lean()
   ])
+  const defaultSettings = {
+    businessName: "Lady 3D's Catering Services",
+    cugWhatsapp: "053 129 9243",
+    sunyaniWhatsapp: "053 129 9243",
+    cateringPhone: "024 465 0474",
+    generalPhone: "027 691 3089",
+    hours: "Mon - Sat: 8:00 AM - 9:00 PM | Sun: 12:00 PM - 8:00 PM",
+    currency: "GH₵",
+    cugAddress: "Fiapre Campus, Catholic University of Ghana, Sunyani",
+    sunyaniAddress: "Market Circle / Main Road, Sunyani",
+    supportEmail: "info@lady3d.com",
+    orderNotificationSound: true
+  }
   res.json({
     menu: menuState?.value || menuItems,
     branches,
@@ -300,8 +321,18 @@ app.get('/api/public/bootstrap', asyncRoute(async (_req, res) => {
     promos: promos.map(promo => ({ ...promo, id: String(promo._id) })),
     loyaltyRules: loyaltyRules?.value || { spendPerPoint: 10, rewardThreshold: 50, promoDiscount: 20 },
     votes: votes?.value?.counts || {},
-    reviews: reviews.map(review => ({ ...review, id: String(review._id) }))
+    reviews: reviews.map(review => ({ ...review, id: String(review._id) })),
+    settings: settingsState?.value ? { ...defaultSettings, ...settingsState.value } : defaultSettings
   })
+}))
+
+app.get('/api/menu', asyncRoute(async (_req, res) => {
+  const [menuState, menuItems] = await Promise.all([
+    AppState.findOne({ key: 'menu' }).lean(),
+    MenuItem.find().sort({ id: 1 }).lean()
+  ])
+  const menu = Array.isArray(menuState?.value) && menuState.value.length ? menuState.value : menuItems
+  res.json({ menu, items: menu })
 }))
 
 // Auth Routes
@@ -521,11 +552,7 @@ app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
   }
 
   // Paystack must be fully configured before an online payment order is accepted.
-  if (input.pay === 'momo' && ![
-    process.env.PAYSTACK_SECRET_KEY,
-    process.env.API_PUBLIC_URL,
-    process.env.FRONTEND_PUBLIC_URL
-  ].every(Boolean)) {
+  if (input.pay === 'momo' && !isPaystackConfigured()) {
     return res.status(503).json({ error: 'Paystack checkout is not configured. Choose cash or contact the administrator.' })
   }
 
@@ -1110,7 +1137,7 @@ app.patch('/api/delivery/orders/:ref/fail', requireAuth, requireRoles('Owner', '
 // ==========================================
 app.use('/api/admin', requireAuth, requireStaff)
 
-app.get('/api/admin/orders', asyncRoute(async (req, res) => {
+app.get('/api/admin/orders', requireRoles('Owner', 'Manager', 'Cashier'), asyncRoute(async (req, res) => {
   const filter = req.user.role !== 'Owner' && req.user.assignedBranch && req.user.assignedBranch !== 'all' ? { branch: req.user.assignedBranch } : {}
   res.json({ orders: await Order.find(filter).sort({ createdAt: -1 }).limit(500).lean() })
 }))
@@ -1300,7 +1327,7 @@ app.patch('/api/admin/staff/:id', requireRoles('Owner'), asyncRoute(async (req, 
   res.json({ staff: publicUser(user) })
 }))
 
-app.get('/api/admin/reviews', asyncRoute(async (_req, res) => {
+app.get('/api/admin/reviews', requireRoles('Owner', 'Manager'), asyncRoute(async (_req, res) => {
   res.json({ reviews: (await Review.find().sort({ createdAt: -1 }).lean()).map(review => ({ ...review, id: String(review._id) })) })
 }))
 
@@ -1582,7 +1609,15 @@ const allowedStateKeys = ['menu', 'cats', 'branchStatus', 'promos', 'staff', 'cu
 app.get('/api/admin/state', asyncRoute(async (req, res) => {
   const rows = await AppState.find({ key: { $in: allowedStateKeys } }).lean()
   const state = Object.fromEntries(rows.map(row => [row.key, row.value]))
-  if (req.user.role === 'Cashier' || req.user.role === 'Driver') delete state.staff
+  if (!['Owner', 'Manager'].includes(req.user.role)) delete state.staff
+  if (!['Owner', 'Manager'].includes(req.user.role)) delete state.reviews
+  if (!['Owner', 'Manager', 'Cashier'].includes(req.user.role)) {
+    delete state.customers
+    delete state.settings
+    delete state.promos
+    delete state.loyaltyRules
+    delete state.votes
+  }
   if (['Owner', 'Manager', 'Cashier'].includes(req.user.role)) {
     state.customers = await getAggregatedCustomers()
   } else {
@@ -1663,7 +1698,8 @@ if (!isLocalDev) {
     'manager.sunyani@lady3d.local',
     'kitchen.sunyani@lady3d.local',
     'driver.sunyani@lady3d.local',
-    'cashier.sunyani@lady3d.local'
+    'cashier.sunyani@lady3d.local',
+    'customer@lady3d.local'
   ]
   const removed = await User.deleteMany({ email: { $in: demoStaffEmails } })
   if (removed.deletedCount > 0) {

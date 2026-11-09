@@ -69,7 +69,7 @@ function StaffLoginPage() {
 
 export default function App() {
   const h = useHash()
-  const { count, toast, user, activeFood, setActiveFood, staffUser, authReady, isNetworkBusy, refreshAllData, say } = useApp()
+  const { count, toast, user, activeFood, setActiveFood, staffUser, authReady, isNetworkBusy, refreshAllData, say, settings } = useApp()
   const path = h.split('?')[0]
   const seg = path.split('/').filter(Boolean)
 
@@ -78,7 +78,7 @@ export default function App() {
   // 2. Onboarding remembered in localStorage: refreshing never resets the user to the start!
   const [splashDone, setSplashDone] = useState(false)
   const [onboardingDone, setOnboardingDone] = useState(() => {
-    return typeof window !== 'undefined' && localStorage.getItem('lady3d_onboarded') === 'true'
+    try { return typeof window !== 'undefined' && localStorage.getItem('lady3d_onboarded') === 'true' } catch { return false }
   })
 
   useEffect(() => {
@@ -172,7 +172,7 @@ export default function App() {
   const isFirstTimeVisitor = !onboardingDone && !user && seg.length === 0
   if (isFirstTimeVisitor) {
     const handleFinish = (target = '/') => {
-      localStorage.setItem('lady3d_onboarded', 'true')
+      try { localStorage.setItem('lady3d_onboarded', 'true') } catch { /* Continue even when browser storage is unavailable. */ }
       setOnboardingDone(true)
       go(target)
     }
@@ -355,10 +355,13 @@ export default function App() {
                 <Link to="/admin/overview" className="footer-admin-link">Master Admin</Link>
                 <Link to="/branch/cug" className="footer-admin-link">CUG Campus Kitchen</Link>
                 <Link to="/branch/sunyani" className="footer-admin-link">Sunyani Main Kitchen</Link>
+                {settings?.supportEmail && (
+                  <a href={`mailto:${settings.supportEmail}`} className="footer-admin-link">Support: {settings.supportEmail}</a>
+                )}
               </div>
             </div>
             <p className="footer-disclaimer">
-              © {new Date().getFullYear()} Lady 3D’s Catering Services · Catholic University of Ghana & Sunyani.
+              © {new Date().getFullYear()} {settings?.businessName || "Lady 3D’s Catering Services"} · Catholic University of Ghana & Sunyani.
             </p>
           </div>
         </footer>

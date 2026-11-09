@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useRef } from 'react'
-import { MENU, REVIEWS, PROMO_CODES, priceAt, DEFAULT_DELIVERY_ZONES } from '../../data.js'
+import { MENU, REVIEWS, PROMO_CODES, priceAt, DEFAULT_DELIVERY_ZONES, setActiveSettings } from '../../data.js'
 import { api, subscribeApiActivity, isApiBusy } from '../../services/api/client.js'
-import { money } from '../../utils/money.js'
+import { money, setCurrencySymbol } from '../../utils/money.js'
 
 const Ctx = createContext()
 export const useApp = () => useContext(Ctx)
@@ -121,6 +121,11 @@ export function AppProvider({ children }) {
       if (bootstrap.deliveryZones?.length) setDeliveryZones(bootstrap.deliveryZones)
       if (bootstrap.dailyStock?.length) setDailyStock(bootstrap.dailyStock)
       if (bootstrap.branches?.length) setBranchStatus(Object.fromEntries(bootstrap.branches.map(b => [b.id, b])))
+      if (bootstrap.settings) {
+        setSettingsState(prev => ({ ...prev, ...bootstrap.settings }))
+        if (bootstrap.settings.currency) setCurrencySymbol(bootstrap.settings.currency)
+        setActiveSettings(bootstrap.settings)
+      }
       if (staffUser && staffUser.role !== 'customer') {
         const [{ orders: currentOrders }, { state }] = await Promise.all([
           api('/admin/orders').catch(() => ({ orders: [] })),
@@ -165,6 +170,11 @@ export function AppProvider({ children }) {
   }
 
   const [settings, setSettingsState] = useState(defaultSettings)
+
+  useEffect(() => {
+    setCurrencySymbol(settings.currency)
+    setActiveSettings(settings)
+  }, [settings])
 
   const setBranch = next => {
     const nextBranch = typeof next === 'function' ? next(branch) : next
@@ -221,8 +231,10 @@ export function AppProvider({ children }) {
   }
 
   const setSettings = async newSettings => {
-    await api('/admin/state/settings', { method: 'PUT', body: JSON.stringify({ value: newSettings }) })
     setSettingsState(newSettings)
+    if (newSettings?.currency) setCurrencySymbol(newSettings.currency)
+    setActiveSettings(newSettings)
+    await api('/admin/state/settings', { method: 'PUT', body: JSON.stringify({ value: newSettings }) })
     return newSettings
   }
 
@@ -322,6 +334,11 @@ export function AppProvider({ children }) {
           if (bootstrap.dailyStock?.length) setDailyStock(bootstrap.dailyStock)
           if (bootstrap.branches?.length) {
             setBranchStatus(Object.fromEntries(bootstrap.branches.map(b => [b.id, b])))
+          }
+          if (bootstrap.settings) {
+            setSettingsState(prev => ({ ...prev, ...bootstrap.settings }))
+            if (bootstrap.settings.currency) setCurrencySymbol(bootstrap.settings.currency)
+            setActiveSettings(bootstrap.settings)
           }
         }
       } catch (error) {
@@ -516,6 +533,7 @@ export function AppProvider({ children }) {
       const message = !user ? 'Create an account or sign in to use the welcome voucher.' : 'Your account has already used the welcome voucher.'
       setPromoError(message)
       say(message)
+      if (!user) go('/signup')
       return
     }
     const promo = promos.find(item => item.code?.toUpperCase() === clean && item.enabled !== false)

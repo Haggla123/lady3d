@@ -307,11 +307,11 @@ function Overview() {
 
 // 2. Kitchen & Orders (Kanban + Branch Tabs + Search + Audio Alert + 1-Tap WhatsApp Dispatch)
 function Orders() {
-  const { orders, setStatus, say, refreshAllData } = useApp()
+  const { orders, setStatus, say, refreshAllData, settings } = useApp()
   const [branchFilter, setBranchFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('active')
   const [searchVal, setSearchVal] = useState('')
-  const [soundEnabled, setSoundEnabled] = useState(true)
+  const [soundEnabled, setSoundEnabled] = useState(() => settings?.orderNotificationSound !== false)
   const [advancingRef, setAdvancingRef] = useState(null)
   const prevOrdersCount = useRef(orders.length)
 
@@ -2152,6 +2152,18 @@ function Settings() {
               placeholder="e.g. info@lady3d.com"
             />
           </label>
+
+          <label style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={s.orderNotificationSound !== false}
+              onChange={e => setS({ ...s, orderNotificationSound: e.target.checked })}
+              style={{ width: '18px', height: '18px', accentColor: '#80141b', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: '14px', fontWeight: 700, color: '#1e293b' }}>
+              Enable Kitchen Order Chime / Alert Sound (Dual-tone ding-dong on incoming orders)
+            </span>
+          </label>
         </div>
       </div>
 
@@ -2267,7 +2279,7 @@ function Settings() {
 
 // Branch Consoles Directory for Admin
 function BranchConsoleDirectory() {
-  const { orders } = useApp()
+  const { orders, settings } = useApp()
   const cugOrders = orders.filter(o => o.branch === 'cug' && o.status < 4)
   const sunyaniOrders = orders.filter(o => o.branch === 'sunyani' && o.status < 4)
 
@@ -2294,8 +2306,8 @@ function BranchConsoleDirectory() {
           </div>
           <div className="console-meta">
             <h4>Sunyani (Main Branch)</h4>
-            <p className="small muted">Market Circle / Main Road, Sunyani</p>
-            <p className="small">WhatsApp Kitchen: <b>053 129 9243</b></p>
+            <p className="small muted">{settings?.sunyaniAddress || 'Market Circle / Main Road, Sunyani'}</p>
+            <p className="small">WhatsApp Kitchen: <b>{settings?.sunyaniWhatsapp || '053 129 9243'}</b></p>
             <div className="console-badges-row">
               <span className="badge-chip">Local & Continental Dishes</span>
               <span className="badge-chip">Counter POS</span>
@@ -2318,8 +2330,8 @@ function BranchConsoleDirectory() {
           </div>
           <div className="console-meta">
             <h4>Catholic University (Campus Annex)</h4>
-            <p className="small muted">Fiapre Campus, Catholic University of Ghana, Sunyani</p>
-            <p className="small">WhatsApp Kitchen: <b>053 129 9243</b></p>
+            <p className="small muted">{settings?.cugAddress || 'Fiapre Campus, Catholic University of Ghana, Sunyani'}</p>
+            <p className="small">WhatsApp Kitchen: <b>{settings?.cugWhatsapp || '053 129 9243'}</b></p>
             <div className="console-badges-row">
               <span className="badge-chip">Student & Faculty Packs</span>
               <span className="badge-chip">Campus Delivery</span>

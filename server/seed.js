@@ -145,10 +145,15 @@ if (process.env.SEED_OWNER_EMAIL && process.env.SEED_OWNER_PASSWORD) {
     'manager.sunyani@lady3d.local',
     'kitchen.sunyani@lady3d.local',
     'driver.sunyani@lady3d.local',
-    'cashier.sunyani@lady3d.local'
+    'cashier.sunyani@lady3d.local',
+    'customer@lady3d.local'
   ]
 
   if (isLocalDev && process.env.SEED_DEMO_STAFF === 'true') {
+    const staffPassword = process.env.SEED_DEMO_STAFF_PASSWORD
+    if (!staffPassword || staffPassword.length < 12) {
+      throw new Error('Set SEED_DEMO_STAFF_PASSWORD to a password of at least 12 characters before seeding demo accounts.')
+    }
     const demoStaff = [
       { email: 'manager.cug@lady3d.local', name: 'CUG Branch Manager', role: 'Manager', branch: 'cug', phone: '0531299243' },
       { email: 'kitchen.cug@lady3d.local', name: 'Fiapre Chef / Kitchen', role: 'Kitchen', branch: 'cug', phone: '0244650474' },
@@ -161,7 +166,6 @@ if (process.env.SEED_OWNER_EMAIL && process.env.SEED_OWNER_PASSWORD) {
     ]
 
     for (const s of demoStaff) {
-      const staffPassword = process.env.SEED_DEMO_STAFF_PASSWORD || 'StaffPass123!'
       await User.updateOne(
         { email: s.email },
         {
@@ -190,7 +194,7 @@ if (process.env.SEED_OWNER_EMAIL && process.env.SEED_OWNER_PASSWORD) {
           role: 'customer',
           assignedBranch: 'cug',
           active: true,
-          passwordHash: await bcrypt.hash('Customer123!', 12)
+          passwordHash: await bcrypt.hash(staffPassword, 12)
         }
       },
       { upsert: true }
