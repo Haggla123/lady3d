@@ -1597,8 +1597,8 @@ export function SignIn() {
     if (!password) return say('Please enter your password')
     setBusy(true)
     api('/auth/login', { method: 'POST', body: JSON.stringify({ email: cleanEmail, password }) })
-      .then(({ user: account }) => {
-        loginUser(account)
+      .then(({ user: account, token }) => {
+        loginUser(account, token)
         if (account.role === 'Kitchen') go('/kitchen')
         else if (account.role === 'Driver') go('/delivery')
         else if (account.role === 'Cashier') go('/branch/' + (account.assignedBranch === 'sunyani' ? 'sunyani' : 'cug') + '/pos')
@@ -1760,7 +1760,7 @@ export function SignUp() {
         password
       })
     })
-      .then(({ user: account }) => { loginUser(account); say('Account created. Check your email to verify your address and activate WELCOME20.'); go('/') })
+      .then(({ user: account, token }) => { loginUser(account, token); say('Account created. Check your email to verify your address and activate WELCOME20.'); go('/') })
       .catch(error => say(error.message, { type: 'error', title: 'Registration Failed' }))
       .finally(() => setBusy(false))
   }
@@ -1911,8 +1911,8 @@ export function VerifyEmail() {
       return
     }
     api('/auth/verify-email', { method: 'POST', body: JSON.stringify({ token, email }) })
-      .then(({ user }) => {
-        loginUser(user)
+      .then(({ user, token: verifiedToken }) => {
+        loginUser(user, verifiedToken)
         setMessage('Your email is verified. WELCOME20 is ready for your first order.')
       })
       .catch(error => {

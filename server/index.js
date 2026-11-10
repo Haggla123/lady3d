@@ -405,8 +405,8 @@ app.post('/api/auth/signup', asyncRoute(async (req, res) => {
   sendWelcomeEmail({ name: user.name, email: user.email })
     .catch(err => console.error('[Signup Welcome Email Failed]:', err.message))
 
-  issueSession(res, user)
-  res.status(201).json({ user: publicUser(user) })
+  const token = issueSession(res, user)
+  res.status(201).json({ user: publicUser(user), token })
 }))
 
 app.post('/api/catering/inquiries', asyncRoute(async (req, res) => {
@@ -443,8 +443,8 @@ app.post('/api/auth/verify-email', asyncRoute(async (req, res) => {
   user.emailVerificationExpires = undefined
   await user.save()
 
-  issueSession(res, user)
-  res.json({ success: true, message: 'Email verified successfully! Welcome to Lady 3D’s.', user: publicUser(user) })
+  const sessionToken = issueSession(res, user)
+  res.json({ success: true, message: 'Email verified successfully! Welcome to Lady 3D’s.', user: publicUser(user), token: sessionToken })
 }))
 
 app.post('/api/auth/resend-verification', asyncRoute(async (req, res) => {
@@ -524,8 +524,8 @@ app.post('/api/auth/login', asyncRoute(async (req, res) => {
   if (!user || !user.passwordHash || user.active === false || !isMatch) {
     return res.status(401).json({ error: 'Email or password is incorrect' })
   }
-  issueSession(res, user)
-  res.json({ user: publicUser(user) })
+  const token = issueSession(res, user)
+  res.json({ user: publicUser(user), token })
 }))
 
 app.post('/api/auth/staff-login', asyncRoute(async (req, res) => {
@@ -535,8 +535,8 @@ app.post('/api/auth/staff-login', asyncRoute(async (req, res) => {
   if (!user || !user.passwordHash || user.role === 'customer' || user.active === false || !isMatch) {
     return res.status(401).json({ error: 'Email or password is incorrect' })
   }
-  issueSession(res, user)
-  res.json({ user: publicUser(user) })
+  const token = issueSession(res, user)
+  res.json({ user: publicUser(user), token })
 }))
 
 app.get('/api/auth/me', requireAuth, (req, res) => res.json({ user: publicUser(req.user) }))
@@ -897,25 +897,31 @@ app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
   // Paystack checkout initialization is server-to-server. The client receives only the hosted checkout URL.
   if (input.pay === 'momo') {
     try {
+      const paystackKey = (process.env.PAYSTACK_SECRET_KEY || '').trim()
+      const publicApiUrl = (process.env.API_PUBLIC_URL || '').trim().replace(/\/+$/, '')
       const response = await fetch('https://api.paystack.co/transaction/initialize', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`
+          Authorization: `Bearer ${paystackKey}`
         },
         body: JSON.stringify({
           email: paymentEmail,
-          amount: String(Math.round(total * 100)),
+          amount: Math.round(total * 100),
           currency: 'GHS',
-          channels: ['mobile_money'],
+          channels: ['mobile_money', 'card'],
           reference: ref,
-          callback_url: `${process.env.API_PUBLIC_URL.replace(/\/$/, '')}/api/payments/paystack/return`,
+          callback_url: `${publicApiUrl}/api/payments/paystack/return`,
           metadata: { order_ref: ref, branch: input.branch, fulfilment: input.orderType }
         })
       })
-      const result = await response.json()
+      const result = await response.json().catch(() => ({}))
       const checkoutUrl = result?.data?.authorization_url
-      if (!response.ok || result?.status !== true || !checkoutUrl) throw new Error(result?.message || 'Paystack did not return a checkout URL')
+      if (!response.ok || result?.status !== true || !checkoutUrl) {
+        const errorDetail = result?.message || `Paystack HTTP ${response.status}`
+        console.error('Paystack initialization response error:', response.status, result)
+        throw new Error(errorDetail)
+      }
       await Order.updateOne({ _id: order._id }, { $set: { checkoutUrl } })
       return res.status(201).json({
         order: { ref, total, orderStatus: order.orderStatus, paymentStatus: order.paymentStatus, deliveryStatus: order.deliveryStatus },
@@ -926,12 +932,12 @@ app.post('/api/orders', optionalAuth, asyncRoute(async (req, res) => {
       await Order.updateOne({ _id: order._id, paymentStatus: 'pending' }, {
         $set: { paymentStatus: 'failed', orderStatus: 'cancelled', status: 0 },
         $unset: { idempotencyKey: 1 },
-        $push: { statusHistory: { orderStatus: 'cancelled', paymentStatus: 'failed', deliveryStatus: order.deliveryStatus, timestamp: new Date(), note: 'Paystack checkout could not be initialized.', updatedBy: 'System' } }
+        $push: { statusHistory: { orderStatus: 'cancelled', paymentStatus: 'failed', deliveryStatus: order.deliveryStatus, timestamp: new Date(), note: `Paystack checkout could not be initialized: ${error.message}`, updatedBy: 'System' } }
       })
       await releaseOrderStock(order.branch, order.items)
       await releaseBranchSlot(order.branch)
-      if (isWelcomeVoucher) await User.updateOne({ _id: req.user.id }, { $unset: { welcomeVoucherUsedAt: 1 } })
-      return res.status(502).json({ error: 'Paystack could not start checkout. Please try again.' })
+      if (isWelcomeVoucher && req.user?.id) await User.updateOne({ _id: req.user.id }, { $unset: { welcomeVoucherUsedAt: 1 } })
+      return res.status(502).json({ error: error.message ? `Paystack error: ${error.message}` : 'Paystack could not start checkout. Please try again.' })
     }
   }
 

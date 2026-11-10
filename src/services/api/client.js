@@ -1,5 +1,24 @@
 export const getApiBaseUrl = () => (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
 
+const TOKEN_KEY = 'lady3d_token'
+
+export const getAuthToken = () => {
+  try {
+    return typeof window !== 'undefined' ? (window.localStorage.getItem(TOKEN_KEY) || '') : ''
+  } catch {
+    return ''
+  }
+}
+
+export const setAuthToken = token => {
+  try {
+    if (typeof window !== 'undefined') {
+      if (token) window.localStorage.setItem(TOKEN_KEY, token)
+      else window.localStorage.removeItem(TOKEN_KEY)
+    }
+  } catch {}
+}
+
 let activeRequests = 0
 const listeners = new Set()
 
@@ -23,11 +42,13 @@ export async function api(path, options = {}) {
   activeRequests++
   notify()
   try {
+    const token = getAuthToken()
     const response = await fetch(`${base}/api${path}`, {
       credentials: 'include',
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers
       }
     })

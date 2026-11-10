@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useRef } from 'react'
 import { MENU, REVIEWS, PROMO_CODES, priceAt, DEFAULT_DELIVERY_ZONES, setActiveSettings } from '../../data.js'
-import { api, subscribeApiActivity, isApiBusy } from '../../services/api/client.js'
+import { api, subscribeApiActivity, isApiBusy, getAuthToken, setAuthToken } from '../../services/api/client.js'
 import { money, setCurrencySymbol } from '../../utils/money.js'
 
 const Ctx = createContext()
@@ -81,8 +81,16 @@ export function AppProvider({ children }) {
   })
   const [orders, setOrders] = useState([])
   
-  // Customer session
-  const [user, setUser] = useState(null)
+  // Customer session with persistent device storage
+  const [user, setUser] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return null
+      const stored = window.localStorage.getItem('lady3d_user')
+      return stored ? JSON.parse(stored) : null
+    } catch {
+      return null
+    }
+  })
   const [favs, setFavs] = useState([1, 2])
   const [points, setPoints] = useState(0)
   const [reviews, setReviews] = useState(REVIEWS)
@@ -144,9 +152,17 @@ export function AppProvider({ children }) {
         if (Array.isArray(remoteMenu)) setMenu(remoteMenu)
         if (sessionRes?.user) {
           setUser(sessionRes.user)
+          try {
+            if (typeof window !== 'undefined') window.localStorage.setItem('lady3d_user', JSON.stringify(sessionRes.user))
+          } catch {}
           setPoints(sessionRes.user.loyaltyPoints || 0)
           const { orders: mine } = await api('/my/orders').catch(() => ({ orders: [] }))
           if (mine) setOrders(mine)
+        } else if (!getAuthToken()) {
+          setUser(null)
+          try {
+            if (typeof window !== 'undefined') window.localStorage.removeItem('lady3d_user')
+          } catch {}
         }
       }
       return true
@@ -401,8 +417,14 @@ export function AppProvider({ children }) {
     return () => window.clearInterval(timer)
   }, [staffUser])
 
-  const loginUser = userData => {
+  const loginUser = (userData, token) => {
     setUser(userData)
+    if (token) setAuthToken(token)
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('lady3d_user', JSON.stringify(userData))
+      }
+    } catch {}
     if (userData.role === 'customer' && (userData.branch === 'cug' || userData.branch === 'sunyani')) {
       setBranch(userData.branch)
     }
@@ -418,6 +440,11 @@ export function AppProvider({ children }) {
   const updateProfile = async profile => {
     const { user: updated } = await api('/auth/profile', { method: 'PUT', body: JSON.stringify(profile) })
     setUser(updated)
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('lady3d_user', JSON.stringify(updated))
+      }
+    } catch {}
     if (updated.branch === 'cug' || updated.branch === 'sunyani') setBranch(updated.branch)
     setPoints(updated.loyaltyPoints || 0)
     return updated
@@ -431,6 +458,12 @@ export function AppProvider({ children }) {
     setStaffUser(null)
     setRole('customer')
     setOrders([])
+    setAuthToken(null)
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('lady3d_user')
+      }
+    } catch {}
     api('/auth/logout', { method: 'POST' }).catch(() => {})
     say('You have been logged out.')
   }
@@ -646,9 +679,13 @@ export function AppProvider({ children }) {
   }
 
   const staffLogin = async (email, password) => {
-    const { user: session } = await api('/auth/staff-login', { method: 'POST', body: JSON.stringify({ email, password }) })
+    const { user: session, token } = await api('/auth/staff-login', { method: 'POST', body: JSON.stringify({ email, password }) })
+    if (token) setAuthToken(token)
     setStaffUser(session)
     setUser(session)
+    try {
+      if (typeof window !== 'undefined') window.localStorage.setItem('lady3d_user', JSON.stringify(session))
+    } catch {}
     setPoints(session.loyaltyPoints || 0)
     setRole(session.role)
     const [{ orders: currentOrders }, { state }] = await Promise.all([
@@ -668,7 +705,11 @@ export function AppProvider({ children }) {
   }
 
   const staffLogout = async () => {
-    await api('/auth/logout', { method: 'POST' })
+    setAuthToken(null)
+    try {
+      if (typeof window !== 'undefined') window.localStorage.removeItem('lady3d_user')
+    } catch {}
+    await api('/auth/logout', { method: 'POST' }).catch(() => {})
     setStaffUser(null)
     setUser(null)
     setPoints(0)

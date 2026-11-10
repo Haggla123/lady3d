@@ -42,13 +42,28 @@ export function Wordmark({ light = false, compact = false }) {
 export function Food({ item, className = '' }) {
   const [err, setErr] = useState(false)
   if (item?.img && !err) {
+    const imageSrc = (() => {
+      try {
+        const url = new URL(item.img)
+        if (url.hostname === 'images.unsplash.com') {
+          // Menu thumbnails render at a few hundred CSS pixels; avoid downloading
+          // the 800px source image for every card, including URLs stored in MongoDB.
+          url.searchParams.set('w', '480')
+          url.searchParams.set('q', '65')
+          url.searchParams.set('auto', 'format')
+          return url.toString()
+        }
+      } catch {}
+      return item.img
+    })()
     return (
       <div className={`food-img-frame ${className}`}>
         <img
           className="food-photo"
-          src={item.img}
+          src={imageSrc}
           alt={item.name}
           loading="lazy"
+          decoding="async"
           onError={() => setErr(true)}
         />
       </div>

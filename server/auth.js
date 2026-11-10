@@ -16,6 +16,7 @@ export function issueSession(res, user) {
     path: '/',
     maxAge: 8 * 60 * 60 * 1000
   })
+  return token
 }
 
 export function clearSession(res) {
@@ -27,9 +28,18 @@ export function clearSession(res) {
   })
 }
 
+export function getTokenFromReq(req) {
+  const authHeader = req.headers?.authorization
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const candidate = authHeader.slice(7).trim()
+    if (candidate) return candidate
+  }
+  return req.cookies?.[cookieName]
+}
+
 export async function requireAuth(req, res, next) {
   try {
-    const token = req.cookies[cookieName]
+    const token = getTokenFromReq(req)
     if (!token) return res.status(401).json({ error: 'Authentication required' })
     const claims = jwt.verify(token, process.env.JWT_SECRET, { issuer: 'lady3d-api', audience: 'lady3d-web' })
     const user = await User.findById(claims.sub).select('-passwordHash')
@@ -43,7 +53,7 @@ export async function requireAuth(req, res, next) {
 
 export async function optionalAuth(req, _res, next) {
   try {
-    const token = req.cookies[cookieName]
+    const token = getTokenFromReq(req)
     if (token) {
       const claims = jwt.verify(token, process.env.JWT_SECRET, { issuer: 'lady3d-api', audience: 'lady3d-web' })
       req.user = await User.findById(claims.sub).select('-passwordHash') || undefined
