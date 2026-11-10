@@ -40,8 +40,27 @@ app.disable('x-powered-by')
 app.use(helmet())
 const allowedOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173')
   .split(',')
-  .map(x => x.trim())
-app.use(cors({ origin: (origin, callback) => callback(null, !origin || allowedOrigins.includes(origin)), credentials: true }))
+  .map(x => x.trim().replace(/\/+$/, ''))
+  .filter(Boolean)
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true)
+    const normalized = origin.replace(/\/+$/, '')
+    const isAllowed = allowedOrigins.includes(normalized) ||
+      allowedOrigins.some(item => (item.startsWith('*.') && normalized.endsWith(item.slice(1))) || item === '*')
+    callback(null, isAllowed)
+  },
+  credentials: true
+}))
+
+app.get('/', (_req, res) =>
+  res.json({
+    status: 'ok',
+    service: 'Lady 3D Catering Enterprise API',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+  })
+)
 const defaultJsonParser = express.json({
   limit: '32kb',
   verify(req, _res, buffer) {
@@ -288,6 +307,17 @@ app.get('/api/public/config', (_req, res) =>
     paystackEnabled: isPaystackConfigured()
   })
 )
+
+// Ensure database is connected before processing API operations
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health' || req.path === '/public/config') return next()
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      error: 'Database is still connecting or unavailable. Please verify MONGODB_URI and check that MongoDB Atlas Network Access allows 0.0.0.0/0.'
+    })
+  }
+  next()
+})
 
 // Public bootstrap
 app.get('/api/public/bootstrap', asyncRoute(async (_req, res) => {
@@ -1825,36 +1855,47 @@ app.use((err, _req, res, _next) => {
 })
 
 const port = Number(process.env.PORT || 4000)
-try {
-  await mongoose.connect(process.env.MONGODB_URI)
-  console.log('Database connected successfully')
-} catch (err) {
-  console.error('Database connection failed:', err.message)
-  process.exit(1)
-}
 
-// Outside local development, verify and purge any retained demo staff accounts
-const isLocalDev = process.env.NODE_ENV === 'development'
-if (!isLocalDev) {
-  const demoStaffEmails = [
-    'manager.cug@lady3d.local',
-    'kitchen.cug@lady3d.local',
-    'driver.cug@lady3d.local',
-    'cashier.cug@lady3d.local',
-    'manager.sunyani@lady3d.local',
-    'kitchen.sunyani@lady3d.local',
-    'driver.sunyani@lady3d.local',
-    'cashier.sunyani@lady3d.local',
-    'customer@lady3d.local'
-  ]
-  const removed = await User.deleteMany({ email: { $in: demoStaffEmails } })
-  if (removed.deletedCount > 0) {
-    console.log(`Purged ${removed.deletedCount} demo staff accounts retained outside local development`)
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Lady 3D Enterprise API listening on 0.0.0.0:${port}`)
+})
+
+async function initializeDatabase() {
+  try {
+    console.log('Connecting to MongoDB...')
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 15000
+    })
+    console.log('Database connected successfully')
+
+    // Outside local development, verify and purge any retained demo staff accounts
+    const isLocalDev = process.env.NODE_ENV === 'development'
+    if (!isLocalDev) {
+      const demoStaffEmails = [
+        'manager.cug@lady3d.local',
+        'kitchen.cug@lady3d.local',
+        'driver.cug@lady3d.local',
+        'cashier.cug@lady3d.local',
+        'manager.sunyani@lady3d.local',
+        'kitchen.sunyani@lady3d.local',
+        'driver.sunyani@lady3d.local',
+        'cashier.sunyani@lady3d.local',
+        'customer@lady3d.local'
+      ]
+      const removed = await User.deleteMany({ email: { $in: demoStaffEmails } })
+      if (removed.deletedCount > 0) {
+        console.log(`Purged ${removed.deletedCount} demo staff accounts retained outside local development`)
+      }
+    }
+
+    for (const branchId of ['cug', 'sunyani']) {
+      const currentActiveOrders = await Order.countDocuments({ branch: branchId, orderStatus: { $in: capacityOrderStatuses } })
+      await Branch.updateOne({ id: branchId }, { $set: { currentActiveOrders } })
+    }
+  } catch (err) {
+    console.error('CRITICAL: Database connection failed:', err.message)
+    console.error('Action required: Please verify MONGODB_URI in Render environment variables and ensure MongoDB Atlas IP Access List allows connections from anywhere (0.0.0.0/0).')
   }
 }
 
-for (const branchId of ['cug', 'sunyani']) {
-  const currentActiveOrders = await Order.countDocuments({ branch: branchId, orderStatus: { $in: capacityOrderStatuses } })
-  await Branch.updateOne({ id: branchId }, { $set: { currentActiveOrders } })
-}
-app.listen(port, () => console.log(`Lady 3D Enterprise API listening on port ${port}`))
+initializeDatabase()
