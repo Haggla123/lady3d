@@ -8,17 +8,23 @@ export function issueSession(res, user) {
     process.env.JWT_SECRET,
     { expiresIn: '8h', issuer: 'lady3d-api', audience: 'lady3d-web' }
   )
+  const isProduction = process.env.NODE_ENV === 'production'
   res.cookie(cookieName, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
     path: '/',
     maxAge: 8 * 60 * 60 * 1000
   })
 }
 
 export function clearSession(res) {
-  res.clearCookie(cookieName, { path: '/', sameSite: 'lax', secure: process.env.NODE_ENV === 'production' })
+  const isProduction = process.env.NODE_ENV === 'production'
+  res.clearCookie(cookieName, {
+    path: '/',
+    sameSite: isProduction ? 'none' : 'lax',
+    secure: isProduction
+  })
 }
 
 export async function requireAuth(req, res, next) {

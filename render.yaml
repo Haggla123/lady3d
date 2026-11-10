@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: lady3d-backend
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm run server
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: API_PUBLIC_URL
+        sync: false
+      - key: FRONTEND_PUBLIC_URL
+        sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        value: info@lady3d.com
+      - key: BREVO_SENDER_NAME
+        value: Lady 3D's Catering Services
