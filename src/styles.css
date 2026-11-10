@@ -1167,9 +1167,12 @@ select:not(.branch-native-select) option {
   gap: 8px;
   border: none;
   background: transparent;
+  color: var(--ink, #1F2937);
   cursor: pointer;
   min-width: 68px;
   transition: transform 0.2s ease;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .category-item-chip:hover {
@@ -1186,14 +1189,32 @@ select:not(.branch-native-select) option {
   align-items: center;
   justify-content: center;
   font-size: 1.5rem;
+  color: #80141B;
+  fill: #80141B;
   box-shadow: var(--shadow-sm);
   transition: all 0.2s ease;
 }
 
+.category-icon-circle svg {
+  width: 24px;
+  height: 24px;
+  fill: #80141B;
+  color: #80141B;
+  display: block;
+  transition: fill 0.2s ease, color 0.2s ease;
+}
+
 .category-item-chip.active .category-icon-circle {
-  background: var(--primary);
-  border-color: var(--primary);
-  box-shadow: 0 6px 18px var(--primary-glow);
+  background: #80141B;
+  border-color: #80141B;
+  color: #FFFFFF;
+  fill: #FFFFFF;
+  box-shadow: 0 6px 18px rgba(128, 20, 27, 0.35);
+}
+
+.category-item-chip.active .category-icon-circle svg {
+  fill: #FFFFFF;
+  color: #FFFFFF;
 }
 
 .category-item-chip.active .category-icon-circle span {
@@ -1207,7 +1228,7 @@ select:not(.branch-native-select) option {
 }
 
 .category-item-chip.active .category-name-text {
-  color: var(--primary);
+  color: #80141B;
 }
 
 /* Dishes Grid */
