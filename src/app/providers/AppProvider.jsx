@@ -640,10 +640,11 @@ export function AppProvider({ children }) {
     setPromoCode('')
     setPromoError('')
     setCart([])
-    say(result.message || `Order ${result.order.ref} confirmed!`)
     if (result.checkoutUrl) {
+      say('Complete your Paystack payment to place the order.')
       window.location.assign(result.checkoutUrl)
     } else {
+      say(result.message || `Order ${result.order.ref} confirmed!`)
       setOrders(os => [result.order, ...os])
       go(`/order-success/${result.order.ref}`)
     }

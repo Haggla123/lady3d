@@ -104,7 +104,7 @@ for (const [key, value] of Object.entries({
   loyaltyRules: { spendPerPoint: 10, rewardThreshold: 50, promoDiscount: 20 },
   settings: {
     businessName: "Lady 3D's Catering Services",
-    cugWhatsapp: '053 129 9243',
+    cugWhatsapp: '027 691 3089',
     sunyaniWhatsapp: '053 129 9243',
     cateringPhone: '024 465 0474',
     generalPhone: '027 691 3089',
@@ -138,15 +138,15 @@ if (process.env.SEED_OWNER_EMAIL && process.env.SEED_OWNER_PASSWORD) {
   console.log(`Ensured owner login for ${email}`)
 
   const demoStaffEmails = [
-    'manager.cug@lady3d.local',
-    'kitchen.cug@lady3d.local',
-    'driver.cug@lady3d.local',
-    'cashier.cug@lady3d.local',
-    'manager.sunyani@lady3d.local',
-    'kitchen.sunyani@lady3d.local',
-    'driver.sunyani@lady3d.local',
-    'cashier.sunyani@lady3d.local',
-    'customer@lady3d.local'
+    'manager.cug@lady3d.com',
+    'kitchen.cug@lady3d.com',
+    'driver.cug@lady3d.com',
+    'cashier.cug@lady3d.com',
+    'manager.sunyani@lady3d.com',
+    'kitchen.sunyani@lady3d.com',
+    'driver.sunyani@lady3d.com',
+    'cashier.sunyani@lady3d.com',
+    'customer@lady3d.com'
   ]
 
   if (isLocalDev && process.env.SEED_DEMO_STAFF === 'true') {
@@ -155,14 +155,14 @@ if (process.env.SEED_OWNER_EMAIL && process.env.SEED_OWNER_PASSWORD) {
       throw new Error('Set SEED_DEMO_STAFF_PASSWORD to a password of at least 12 characters before seeding demo accounts.')
     }
     const demoStaff = [
-      { email: 'manager.cug@lady3d.local', name: 'CUG Branch Manager', role: 'Manager', branch: 'cug', phone: '0531299243' },
-      { email: 'kitchen.cug@lady3d.local', name: 'Fiapre Chef / Kitchen', role: 'Kitchen', branch: 'cug', phone: '0244650474' },
-      { email: 'driver.cug@lady3d.local', name: 'Campus Dispatch Rider 1', role: 'Driver', branch: 'cug', phone: '0551122334' },
-      { email: 'cashier.cug@lady3d.local', name: 'CUG Cashier POS', role: 'Cashier', branch: 'cug', phone: '0245566778' },
-      { email: 'manager.sunyani@lady3d.local', name: 'Sunyani Main Manager', role: 'Manager', branch: 'sunyani', phone: '0276913089' },
-      { email: 'kitchen.sunyani@lady3d.local', name: 'Main Kitchen Team', role: 'Kitchen', branch: 'sunyani', phone: '0244650474' },
-      { email: 'driver.sunyani@lady3d.local', name: 'Town Dispatch Rider 1', role: 'Driver', branch: 'sunyani', phone: '0209988776' },
-      { email: 'cashier.sunyani@lady3d.local', name: 'Sunyani Cashier POS', role: 'Cashier', branch: 'sunyani', phone: '0249988776' }
+      { email: 'manager.cug@lady3d.com', name: 'CUG Branch Manager', role: 'Manager', branch: 'cug', phone: '0531299243' },
+      { email: 'kitchen.cug@lady3d.com', name: 'Fiapre Chef / Kitchen', role: 'Kitchen', branch: 'cug', phone: '0244650474' },
+      { email: 'driver.cug@lady3d.com', name: 'Campus Dispatch Rider 1', role: 'Driver', branch: 'cug', phone: '0551122334' },
+      { email: 'cashier.cug@lady3d.com', name: 'CUG Cashier POS', role: 'Cashier', branch: 'cug', phone: '0245566778' },
+      { email: 'manager.sunyani@lady3d.com', name: 'Sunyani Main Manager', role: 'Manager', branch: 'sunyani', phone: '0276913089' },
+      { email: 'kitchen.sunyani@lady3d.com', name: 'Main Kitchen Team', role: 'Kitchen', branch: 'sunyani', phone: '0244650474' },
+      { email: 'driver.sunyani@lady3d.com', name: 'Town Dispatch Rider 1', role: 'Driver', branch: 'sunyani', phone: '0209988776' },
+      { email: 'cashier.sunyani@lady3d.com', name: 'Sunyani Cashier POS', role: 'Cashier', branch: 'sunyani', phone: '0249988776' }
     ]
 
     for (const s of demoStaff) {

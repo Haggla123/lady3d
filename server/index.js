@@ -1016,12 +1016,15 @@ async function applyPaystackResult(reference) {
 
 app.get('/api/payments/paystack/return', asyncRoute(async (req, res) => {
   const reference = String(req.query.reference || '')
+  let paymentResult
   if (reference) {
-    try { await applyPaystackResult(reference) }
+    try { paymentResult = await applyPaystackResult(reference) }
     catch (error) { console.error('Paystack return verification failed:', error.message) }
   }
   const target = new URL(process.env.FRONTEND_PUBLIC_URL || 'http://localhost:5173')
-  target.hash = reference ? `/track/${encodeURIComponent(reference)}` : '/cart'
+  target.hash = paymentResult?.order?.paymentStatus === 'paid'
+    ? '/'
+    : reference ? `/track/${encodeURIComponent(reference)}` : '/cart'
   res.redirect(303, target.toString())
 }))
 

@@ -1603,7 +1603,7 @@ export function SignIn() {
         else if (account.role === 'Driver') go('/delivery')
         else if (account.role === 'Cashier') go('/branch/' + (account.assignedBranch === 'sunyani' ? 'sunyani' : 'cug') + '/pos')
         else if (account.role === 'Owner' || account.role === 'Manager') go('/admin')
-        else go('/account')
+        else go('/')
       })
       .catch(error => say(error.message, { type: 'error', title: 'Sign-in Failed' }))
       .finally(() => setBusy(false))
