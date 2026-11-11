@@ -1113,14 +1113,16 @@ function Customers() {
   }
 
   const handleAddCustomer = async () => {
-    if (!newCust.name.trim() || !newCust.phone.trim()) return say('Please enter customer name and phone', { type: 'error' })
+    const name = String(newCust.name || '').trim()
+    const phone = String(newCust.phone || '').trim()
+    if (!name || !phone) return say('Please enter customer name and phone', { type: 'error' })
     setAdding(true)
     try {
       const res = await api('/admin/customers', {
         method: 'POST',
         body: JSON.stringify({
-          name: newCust.name.trim(),
-          phone: newCust.phone.trim(),
+          name,
+          phone,
           branch: newCust.branch,
           points: +newCust.points || 0,
           status: newCust.status
@@ -1128,8 +1130,8 @@ function Customers() {
       })
       const added = res.customer || {
         id: Date.now(),
-        name: newCust.name.trim(),
-        phone: newCust.phone.trim(),
+        name,
+        phone,
         branch: newCust.branch,
         ordersCount: 0,
         spent: 0,
@@ -1212,16 +1214,22 @@ function Customers() {
       {/* Add Customer Card */}
       <div className="pbd-add-meal-grid mt-2 mb-3">
         <input
+          type="text"
+          name="customerName"
+          autoComplete="name"
           placeholder="Customer Name"
           value={newCust.name}
-          onChange={e => setNewCust({ ...newCust, name: e.target.value })}
+          onChange={e => setNewCust(current => ({ ...current, name: e.target.value }))}
           className="pbd-input"
           disabled={adding}
         />
         <input
+          type="tel"
+          name="customerPhone"
+          autoComplete="tel"
           placeholder="Phone (e.g. 024 123 4567)"
           value={newCust.phone}
-          onChange={e => setNewCust({ ...newCust, phone: e.target.value })}
+          onChange={e => setNewCust(current => ({ ...current, phone: e.target.value }))}
           className="pbd-input"
           disabled={adding}
         />
