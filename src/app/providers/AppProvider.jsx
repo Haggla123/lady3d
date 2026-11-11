@@ -689,11 +689,13 @@ export function AppProvider({ children }) {
     } catch {}
     setPoints(session.loyaltyPoints || 0)
     setRole(session.role)
-    const [{ orders: currentOrders }, { state }] = await Promise.all([
-      api('/admin/orders'),
+    const [orderResult, { state }] = await Promise.all([
+      ['Owner', 'Manager', 'Cashier'].includes(session.role)
+        ? api('/admin/orders')
+        : Promise.resolve({ orders: [] }),
       api('/admin/state')
     ])
-    setOrders(currentOrders || [])
+    setOrders(orderResult.orders || [])
     if (['Owner', 'Manager'].includes(session.role)) {
       const { staff: currentStaff } = await api('/admin/staff')
       setStaff(currentStaff || [])
